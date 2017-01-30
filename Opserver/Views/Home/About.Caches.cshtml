@@ -20,10 +20,10 @@
 }
 <h5 class="page-header">
     Pollers
+    <span class="text-muted small">(@pollingInfo.NodeCount.Pluralize("node"), @pollingInfo.TotalPollers.Pluralize("poller"), @pollingInfo.ActivePolls.ToComma() active)</span>
     <span class="pull-right">
         <a href="?refresh=@(Model.AutoRefresh ? "false" : "true")">@(Model.AutoRefresh ? "Disable" : "Enable") Auto Refresh</a>
         <a href="#" class="js-reload-link">Reload</a>
-        <a href="#" class="js-poll-all">Poll All</a>
     </span>
 </h5>
 <table class="table table-hover table-responsive text-nowrap table-super-condensed">
@@ -33,6 +33,7 @@
             <th>Name</th>
             <th>Summary</th>
             <th>Last</th>
+            <th>Next</th>
             <th>Thread</th>
             <th>Action</th>
         </tr>
@@ -47,6 +48,7 @@
                 <th>@pn.UniqueKey</th>
                 <th>@pn</th>
                 <th>@(pn.LastPoll?.ToRelativeTimeSpanMini()) <span class="text-muted small">(@pn.LastPollDuration.ToTimeStringMini())</span></th>
+                <th></th>
                 <th>
                     @if (pn.IsPolling)
                     {
@@ -58,7 +60,7 @@
                     }
                 </th>
                 <th class="actions">
-                    <a href="/json/@pn.NodeType/@pn.UniqueKey">JSON</a>
+                    <a href="~/json/@pn.NodeType/@pn.UniqueKey">JSON</a>
                     <a href="#" class="js-poll-now" data-type="@pn.NodeType" data-key="@pn.UniqueKey">Poll All</a>
                 </th>
             </tr>
@@ -76,26 +78,35 @@ Url: /@pn.NodeType/@pn.UniqueKey.UrlEncode()/@p.ParentMemberName">
                     <td>
                         @(p.InventoryDescription ?? "(empty)")
                         <small>
-                            @if (!p.ContainsData){<span class="text-danger"> (No Data)</span>}
-                            @if (p.IsStale){<span class="text-warning"> (Stale)</span>}
-                            @if (p.CacheStaleForSeconds > 0 && p.IsExpired){<span class="text-danger"> (Expired)</span>}
+                            @{
+                                if (!p.ContainsData) {<span class="text-danger"> (No Data)</span>}
+                                else if (p.IsStale){<span class="text-warning"> (Stale)</span>}
+                            }
                             (@p.PollsTotal.Pluralize("poll"): @p.PollsSuccessful.ToComma() successful)
                         </small>
                     </td>
                     <td>
                         @if (p.LastPoll == null)
                         {
-                            <span class="critical light">Never</span>
+                            <span class="text-danger small">Never</span>
                         }
                         else
                         {
                             @:@p.ToPollSpan() <span class="text-muted small">(@(p.LastPollDuration?.ToTimeStringMini()))</span>
                         }
                     </td>
-                    <td class="@(p.IsPolling ? "text-success small" : "text-muted small")">(@(p.PollStatus))</td>
+                    <td class="text-muted small">@(p.NextPoll?.ToRelativeTimeSpanMini())</td>
+                    <td class="@(p.IsPolling ? "text-success small" : "text-muted small")">(@(p.PollStatus.IsNullOrEmptyReturn("none")))</td>
                     <td class="actions">
-                        <a href="/json/@pn.NodeType/@pn.UniqueKey.UrlEncode()/@p.ParentMemberName">JSON</a>
-                        <a href="/profiler/results?id=@p.UniqueId.ToString()" target="_blank">Profile</a>
+                        <a href="~/json/@pn.NodeType/@pn.UniqueKey.UrlEncode()/@p.ParentMemberName">JSON</a>
+                        @if (p.Profiler != null)
+                        {
+                            <a href="~/profiler/results?id=@(p.Profiler?.Id.ToString())" target="_blank">Profile</a>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Profile</span>
+                        }
                         <a href="#" class="js-poll-now" data-type="@pn.NodeType" data-key="@pn.UniqueKey" data-id="@p.UniqueId.ToString()">Poll</a>
                     </td>
                 </tr>

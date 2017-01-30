@@ -2,36 +2,41 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.Serialization;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace StackExchange.Opserver.Data.Elastic
 {
     public partial class ElasticCluster
     {
         private Cache<ClusterNodesInfo> _nodes;
-        public Cache<ClusterNodesInfo> Nodes => _nodes ?? (_nodes = new Cache<ClusterNodesInfo>
-        {
-            CacheForSeconds = RefreshInterval,
-            UpdateCache = UpdateFromElastic(nameof(Nodes), async () =>
+        public Cache<ClusterNodesInfo> Nodes => 
+            _nodes ?? (_nodes = GetElasticCache(async () =>
             {
-                var result = (await GetAsync<ClusterNodesInfo>("_nodes").ConfigureAwait(false))?.Prep();
-                if (result == null) return null;
+                var resultTask = GetAsync<ClusterNodesInfo>("_nodes");
+                // Note without ?all, we have dropped support for < v0.90
+                var statsTask = GetAsync<ClusterNodesStats>("_nodes/stats"); 
 
-                var stats = await GetAsync<ClusterNodesStats>("_nodes/stats?all").ConfigureAwait(false);
-                if (stats == null) return result;
-
-                foreach (var s in stats.Nodes)
+                await Task.WhenAll(resultTask, statsTask);
+                var result = (await resultTask)?.Prep();
+                var stats = await statsTask;
+                
+                if (result != null && stats != null && result.RawNodes != null)
                 {
-                    var node = result.Nodes.FirstOrDefault(n => n.GUID == s.Key);
-                    if (node != null)
+                    foreach (var s in stats.Nodes)
                     {
-                        node.Stats = s.Value;
+                        NodeInfo node;
+                        if (result.RawNodes.TryGetValue(s.Key, out node))
+                        {
+                            node.Stats = s.Value;
+                        }
                     }
                 }
                 return result;
-            })
-        });
+            }));
 
-        public string Name => Nodes.HasData() ? Nodes.Data.Name : "Unknown";
+        public string Name => Nodes.Data?.Name ?? SettingsName;
+        public string ShortName(NodeInfo node) => node?.Name.TrimEnd("-" + Name);
 
         public class ClusterNodesInfo
         {
@@ -69,9 +74,12 @@ namespace StackExchange.Opserver.Data.Elastic
             public MonitorStatus MonitorStatus => MonitorStatus.Good;
             public string MonitorStatusReason => null;
 
-            private Version _version;
+            //private Version _version;
+            //[IgnoreDataMember]
+            //public Version Version => _version ?? (_version = VersionString.HasValue() ? Version.Parse(VersionString) : new Version("0.0"));
+
             [IgnoreDataMember]
-            public Version Version => _version ?? (_version = VersionString.HasValue() ? Version.Parse(VersionString) : new Version("0.0"));
+            public string Version => VersionString;
 
             public bool IsClient => GetAttribute("client") == "true";
             public bool IsDataNode => GetAttribute("data") == "true";
@@ -90,8 +98,16 @@ namespace StackExchange.Opserver.Data.Elastic
             public string Name { get; internal set; }
             //[DataMember(Name = "transport_address")]
             //public string TransportAddress { get; internal set; }
-            [DataMember(Name = "host")]
+
+            // Elasticsearch 5.0 changed this, for reasons passing understanding.
+            [DataMember(Name = "hostname")]
             public string Hostname { get; internal set; }
+            [DataMember(Name = "host")]
+            internal string ElasticSearchJustLovesChangingPropertiesWithNoClueOfImpactOnActualApplications
+            {
+                set { Hostname = value; }
+            }
+
             [DataMember(Name = "version")]
             public string VersionString { get; internal set; }
             //[DataMember(Name = "build")]
@@ -249,6 +265,8 @@ namespace StackExchange.Opserver.Data.Elastic
 
             public class HTTPInfo
             {
+                private static readonly Regex _inetStrip = new Regex(@"inet\[/(.*)\]", RegexOptions.Compiled);
+
                 [DataMember(Name = "bound_address")]
                 public dynamic BoundAddress { get; internal set; }
                 [DataMember(Name = "publish_address")]
@@ -258,8 +276,8 @@ namespace StackExchange.Opserver.Data.Elastic
                 [DataMember(Name = "max_content_length_in_bytes")]
                 public long MaxContentLengthInBytes { get; internal set; }
 
-                // TODO: Pretty
-                public string PublishAddressPretty => PublishAddress;
+                private string _publishPrettyAddress;
+                public string PublishAddressPretty => _publishPrettyAddress ?? (_publishPrettyAddress = _inetStrip.Replace(PublishAddress, "$1"));
             }
         }
 
@@ -647,8 +665,8 @@ namespace StackExchange.Opserver.Data.Elastic
 
                     public class GCOverallStats : GarbageCollectorStats
                     {
-                        [DataMember(Name = "Collectors")]
-                        public Dictionary<string, GarbageCollectorStats> collectors { get; internal set; }
+                        [DataMember(Name = "collectors")]
+                        public Dictionary<string, GarbageCollectorStats> Collectors { get; internal set; }
                     }
 
                     public class GarbageCollectorStats

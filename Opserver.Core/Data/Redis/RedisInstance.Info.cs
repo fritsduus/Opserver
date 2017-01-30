@@ -26,30 +26,20 @@ namespace StackExchange.Opserver.Data.Redis
         public RedisInfo.ReplicationInfo Replication { get; private set; }
 
         private Cache<RedisInfo> _info;
-        public Cache<RedisInfo> Info
-        {
-            get
+        public Cache<RedisInfo> Info =>
+            _info ?? (_info = GetRedisCache(10.Seconds(), async () =>
             {
-                return _info ?? (_info = new Cache<RedisInfo>
+                var server = Connection.GetSingleServer();
+                string infoStr;
+                using (MiniProfiler.Current.CustomTiming("redis", "INFO"))
                 {
-                    CacheForSeconds = 10,
-                    UpdateCache = GetFromRedisAsync(nameof(Info), async rc =>
-                    {
-                        var server = rc.GetSingleServer();
-                        string infoStr;
-                        //TODO: Remove when StackExchange.Redis gets profiling
-                        using (MiniProfiler.Current.CustomTiming("redis", "INFO"))
-                        {
-                            infoStr = await server.InfoRawAsync().ConfigureAwait(false);
-                        }
-                        ConnectionInfo.Features = server.Features;
-                        var ri = RedisInfo.FromInfoString(infoStr);
-                        if (ri != null) Replication = ri.Replication;
-                        return ri;
-                    })
-                });
-            }
-        }
+                    infoStr = await server.InfoRawAsync().ConfigureAwait(false);
+                }
+                ConnectionInfo.Features = server.Features;
+                var ri = RedisInfo.FromInfoString(infoStr);
+                if (ri != null) Replication = ri.Replication;
+                return ri;
+            }));
 
         public RedisInfo.RedisInstanceRole Role
         {
@@ -58,7 +48,7 @@ namespace StackExchange.Opserver.Data.Redis
                 var lastRole = Replication?.RedisInstanceRole;
                 // If we think we're a master and the last poll failed - look to other nodes for info
                 if (!Info.LastPollSuccessful && lastRole == RedisInfo.RedisInstanceRole.Master &&
-                    AllInstances.Any(r => r.SlaveInstances.Any(s => s == this)))
+                    RedisModule.Instances.Any(r => r.SlaveInstances.Any(s => s == this)))
                     return RedisInfo.RedisInstanceRole.Slave;
                 return lastRole ?? RedisInfo.RedisInstanceRole.Unknown;
             }
@@ -99,7 +89,7 @@ namespace StackExchange.Opserver.Data.Redis
 
         public RedisInstance Master
         {
-            get { return Replication?.MasterHost.HasValue() == true ? GetInstance(Replication.MasterHost, Replication.MasterPort) : AllInstances.FirstOrDefault(i => i.SlaveInstances.Contains(this)); }
+            get { return Replication?.MasterHost.HasValue() == true ? Get(Replication.MasterHost, Replication.MasterPort) : RedisModule.Instances.FirstOrDefault(i => i.SlaveInstances.Contains(this)); }
         }
 
         public int SlaveCount => Replication?.ConnectedSlaves ?? 0;
@@ -124,7 +114,7 @@ namespace StackExchange.Opserver.Data.Redis
         public List<RedisInstance> GetAllSlavesInChain()
         {
             var slaves = SlaveInstances;
-            return slaves.Union(slaves.SelectMany(i => i?.GetAllSlavesInChain())).Distinct().ToList();
+            return slaves.Union(slaves.SelectMany(i => i?.GetAllSlavesInChain() ?? Enumerable.Empty<RedisInstance>())).Distinct().ToList();
         }
 
         public class RedisInfoSection

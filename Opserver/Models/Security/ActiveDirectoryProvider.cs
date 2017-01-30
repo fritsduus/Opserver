@@ -10,9 +10,9 @@ namespace StackExchange.Opserver.Models.Security
 {
     public class ActiveDirectoryProvider : SecurityProvider
     {
-        private List<string> Servers { get; set; }
-        private string AuthUser { get; set; }
-        private string AuthPassword { get; set; }
+        private List<string> Servers { get; }
+        private string AuthUser { get; }
+        private string AuthPassword { get; }
 
         public ActiveDirectoryProvider(SecuritySettings settings)
         {
@@ -61,7 +61,7 @@ namespace StackExchange.Opserver.Models.Security
                             });
                         return group ?? old ?? new List<string>();
                     }
-                }, 5 * 60, 60 * 60 * 24);
+                }, 5.Minutes(), 24.Hours());
         }
 
         public T RunCommand<T>(Func<PrincipalContext, T> command, int retries = 3)

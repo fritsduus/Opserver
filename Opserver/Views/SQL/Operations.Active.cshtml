@@ -1,4 +1,5 @@
-﻿@using StackExchange.Profiling
+﻿@using StackExchange.Opserver.Controllers
+@using StackExchange.Profiling
 @using StackExchange.Opserver.Data.Dashboard
 @using StackExchange.Opserver.Data.SQL
 @using StackExchange.Opserver.Views.SQL
@@ -19,11 +20,7 @@
 }
 else
 {
-    Cache<List<SQLInstance.ActiveOperation>> activeOps;
-    using (MiniProfiler.Current.Step(nameof(i.GetActiveOperations)))
-    {
-        activeOps = i.GetActiveOperations(Model.ActiveSearchOptions);
-    }
+    var activeOps = i.GetActiveOperations(Model.ActiveSearchOptions);
     var enableDashboardLinks = Current.Settings.Dashboard.Enabled;
     if (activeOps.ErrorMessage.HasValue())
     {
@@ -35,11 +32,11 @@ else
     }
     else
     {
-        var data = activeOps.SafeData(true);
+        var data = activeOps.Data ?? new List<SQLInstance.ActiveOperation>();
         <h5 class="page-header">
             Current active queries on @i.Name:
             <span class="pull-right">
-                <a href="#/sql/active/filters" class="hover-pulsate@(Model.ActiveSearchOptions.IsNonDefault ? " text-warning" : "")"><span class="glyphicon glyphicon-filter"></span></a>
+                <a href="#/sql/active/filters" class="hover-pulsate@(Model.ActiveSearchOptions.IsNonDefault ? " text-warning" : "")"><i class="fa fa-filter" aria-hidden="true"></i></a>
                 <a href="#" class="js-reload-link">Reload</a>
             </span>
         </h5>
@@ -115,9 +112,9 @@ else
                         }
                     </td>
                     <td title="Program: @w.ProgramName">
-                        @if (enableDashboardLinks && DashboardData.GetNodeByName(w.HostName) != null)
+                        @if (enableDashboardLinks && DashboardModule.GetNodeByName(w.HostName) != null)
                         {
-                            <a href="/dashboard/node?node=@w.HostName.UrlEncode()" class="node-name-link">@w.HostName</a>
+                            <a href="@Url.Action(nameof(DashboardController.Node), "Dashboard", new { node = w.HostName })">@w.HostName</a>
                         }
                         else
                         {

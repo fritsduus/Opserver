@@ -1,5 +1,4 @@
-﻿@using StackExchange.Opserver.Models
-@using StackExchange.Opserver.Data.SQL
+﻿@using StackExchange.Opserver.Data.SQL
 @using StackExchange.Opserver.Views.SQL
 @model OperationsTopModel
 @{
@@ -21,7 +20,7 @@
         }
         else
         {
-            <a href="?node=@(Model.CurrentInstance.Name)&sort=@(sort.ToString())@(Model.TopSearchOptions.ToQueryString(true))" title="Sort by @sort.GetDescription()">@title</a>
+            <a href="?node=@(Model.CurrentInstance.Name)&sort=@(sort.ToString())@(Model.TopSearchOptionsQueryString)" title="Sort by @sort.GetDescription()">@title</a>
         }
     </th>
 }
@@ -48,10 +47,10 @@
 else
 {
     <h5 class="page-header">
-        Top queries on @i.Name by @Model.TopSearchOptions.Sort.GetDescription():
+        Top queries on @i.Name @(Model.TopSearchOptions.Sort.HasValue ? " by " + Model.TopSearchOptions.Sort.Value.GetDescription() : "")
         <span class="pull-right">
-            <a href="#/sql/top/filters" class="hover-pulsate@(Model.TopSearchOptions.IsNonDefault ? " text-warning" : "")"><span class="glyphicon glyphicon-filter"></span></a>
-            <a href="#" class="js-reload-link">Reload</a>
+            <a href="#/sql/top/filters" class="hover-pulsate@(Model.TopSearchOptions.IsNonDefault ? " text-warning" : "")" title="Filter"><i class="fa fa-filter" aria-hidden="true"></i></a>
+            @*<a href="#" class="js-reload-link">Reload</a>*@
         </span>
     </h5>
     <table class="table table-striped table-hover text-nowrap table-super-condensed table-responsive table-row-actions">
@@ -72,8 +71,8 @@ else
                 @SortLink(SQLInstance.TopSorts.AvgDuration, "Avg")
                 @SortLink(SQLInstance.TopSorts.TotalDuration, "Total")
 
-                @SortLink(SQLInstance.TopSorts.AvgReads, "Reads (Avg)")
-                @SortLink(SQLInstance.TopSorts.TotalReads, "Reads (Total)")
+                @SortLink(SQLInstance.TopSorts.AvgReads, "Avg")
+                @SortLink(SQLInstance.TopSorts.TotalReads, "Total")
 
                 @SortLink(SQLInstance.TopSorts.ExecutionCount, "Execs")
                 @SortLink(SQLInstance.TopSorts.ExecutionsPerMinute, "Execs/min")

@@ -19,7 +19,7 @@ namespace StackExchange.Opserver.Data.Redis
         static RedisAnalyzer()
         {
             KeyMatchers = new Dictionary<RedisConnectionInfo, List<KeyMatcher>>();
-            foreach (var i in RedisInstance.AllInstances.Select(rci => rci.ConnectionInfo))
+            foreach (var i in RedisModule.Instances.Select(rci => rci.ConnectionInfo))
             {
                 KeyMatchers[i] = i.Settings.AnalysisRegexes
                                   .Where(r => r.Value.HasValue())
@@ -43,7 +43,7 @@ namespace StackExchange.Opserver.Data.Redis
         {
             using (MiniProfiler.Current.Step("Redis Memory Analysis for " + connectionInfo + " - DB:" + database.ToString()))
             {
-                return Current.LocalCache.GetSet<RedisMemoryAnalysis>(GetMemoryAnalysisKey(connectionInfo, database), (old, ctx) => GetDatabaseMemoryAnalysis(connectionInfo, database), 24 * 60 * 60, 24 * 60 * 60);
+                return Current.LocalCache.GetSet<RedisMemoryAnalysis>(GetMemoryAnalysisKey(connectionInfo, database), (old, ctx) => GetDatabaseMemoryAnalysis(connectionInfo, database), 24.Hours(), 24.Hours());
             }
         }
 

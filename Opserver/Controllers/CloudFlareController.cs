@@ -1,4 +1,5 @@
-﻿using System.Web.Mvc;
+﻿using System.Threading.Tasks;
+using System.Web.Mvc;
 using StackExchange.Opserver.Data.CloudFlare;
 using StackExchange.Opserver.Helpers;
 using StackExchange.Opserver.Models;
@@ -7,33 +8,25 @@ using StackExchange.Opserver.Views.CloudFlare;
 namespace StackExchange.Opserver.Controllers
 {
     [OnlyAllow(Roles.CloudFlare)]
-    public partial class CloudFlareController : StatusController
+    public class CloudFlareController : StatusController
     {
-        protected override ISecurableSection SettingsSection => Current.Settings.CloudFlare;
+        public override ISecurableModule SettingsModule => Current.Settings.CloudFlare;
 
-        protected override string TopTab => TopTabs.BuiltIn.CloudFlare;
+        public override TopTab TopTab => new TopTab("CloudFlare", nameof(Dashboard), this, 40)
+        {
+            GetMonitorStatus = () => CloudFlareAPI.Instance.MonitorStatus
+        };
 
         [Route("cloudflare")]
         public ActionResult Dashboard()
         {
-            return Redirect("/cloudflare/dns");
-        }
-
-        [Route("cloudflare/railgun")]
-        public ActionResult Railguns() 
-        {
-            var vd = new RailgunsModel
-                {
-                    Railguns = RailgunInstance.AllInstances,
-                    View = DashboardModel.Views.Railgun
-                };
-            return View(vd);
+            return RedirectToAction(nameof(DNS));
         }
 
         [Route("cloudflare/dns")]
-        public ActionResult DNS()
+        public async Task<ActionResult> DNS()
         {
-            CloudFlareAPI.Instance.WaitForFirstPoll(10000);
+            await CloudFlareAPI.Instance.PollAsync();
             var vd = new DNSModel
             {
                 View = DashboardModel.Views.DNS,

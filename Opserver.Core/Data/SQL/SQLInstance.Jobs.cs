@@ -4,13 +4,14 @@ using System.Data;
 using System.Data.Common;
 using System.Threading.Tasks;
 using Dapper;
+using UnconstrainedMelody;
 
 namespace StackExchange.Opserver.Data.SQL
 {
     public partial class SQLInstance
     {
         private Cache<List<SQLJobInfo>> _jobSummary;
-        public Cache<List<SQLJobInfo>> JobSummary => _jobSummary ?? (_jobSummary = SqlCacheList<SQLJobInfo>(2*60));
+        public Cache<List<SQLJobInfo>> JobSummary => _jobSummary ?? (_jobSummary = SqlCacheList<SQLJobInfo>(2.Minutes()));
 
         /// <summary>
         /// Enables or disables an agent job
@@ -100,7 +101,7 @@ namespace StackExchange.Opserver.Data.SQL
             public string Category { get; internal set; }
             public JobStatuses? LastRunStatus { get; internal set; }
             public string LastRunMessage { get; internal set; }
-            public JobRunSources LastRunRequestedSource { get; internal set; }
+            public JobRunSources? LastRunRequestedSource { get; internal set; }
             public DateTime? LastRunRequestedDate { get; internal set; }
             public DateTime? LastStartDate { get; internal set; }
             public int? LastRunDurationSeconds { get; internal set; }

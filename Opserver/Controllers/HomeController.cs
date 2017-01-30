@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Net;
 using System.Web.Mvc;
 using StackExchange.Opserver.Views.Shared;
 using StackExchange.Profiling;
 using StackExchange.Opserver.Data;
-using StackExchange.Opserver.Data.Dashboard;
 using StackExchange.Opserver.Helpers;
 using StackExchange.Opserver.Models;
 using StackExchange.Opserver.Views.Home;
@@ -49,15 +47,23 @@ namespace StackExchange.Opserver.Controllers
             return View("About.Caches", vd);
         }
 
+        [Route("set-theme"), HttpPost]
+        public ActionResult SetTheme(string theme)
+        {
+            Theme.Set(theme);
+            return Redirect(Request.UrlReferrer?.ToString());
+        }
+
         [Route("debug"), AllowAnonymous]
         public ActionResult Debug()
         {
             var sb = StringBuilderCache.Get()
-                .AppendFormat("Request IP: {0}\n", Current.RequestIP)
-                .AppendFormat("Request User: {0}\n", Current.User.AccountName)
-                .AppendFormat("Request Roles: {0}\n", Current.User.RawRoles)
+                .AppendLine("Request Info")
+                .Append("  IP: ").AppendLine(Current.RequestIP)
+                .Append("  User: ").AppendLine(Current.User.AccountName)
+                .Append("  Roles: ").AppendLine(Current.User.Role.ToString())
                 .AppendLine()
-                .AppendLine("Headers:");
+                .AppendLine("Headers");
             foreach (string k in Request.Headers.Keys)
             {
                 sb.AppendFormat("  {0}: {1}\n", k, Request.Headers[k]);
@@ -65,8 +71,8 @@ namespace StackExchange.Opserver.Controllers
             
             var ps = PollingEngine.GetPollingStatus();
             sb.AppendLine()
-              .AppendLine("Polling Info:")
-              .AppendLine(ps.GetPropertyNamesAndValues());
+              .AppendLine("Polling Info")
+              .AppendLine(ps.GetPropertyNamesAndValues(prefix: "  "));
             return TextPlain(sb.ToStringRecycle());
         }
 

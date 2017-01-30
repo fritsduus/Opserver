@@ -7,7 +7,7 @@
     var tables = s.GetTableInfo(Model.Database);
     var columns = s.GetColumnInfo(Model.Database);
 }
-@if (tables.Data == null || !tables.LastPollSuccessful)
+@if (tables.Data == null || !tables.Successful)
 {
     <div class="alert alert-warning">
         <h5>There was an error fetching table info from @s.Name for @Model.Database</h5>
@@ -28,7 +28,7 @@
         <tbody>
             @foreach (var t in tables.Data.OrderBy(t => t.SchemaName).ThenBy(t => t.TableName))
             {
-                <tr data-table="@(t.SchemaName).@(t.TableName)" class="js-database-table" title="@(t.SchemaName).@(t.TableName) created @t.CreationDate">
+                <tr data-obj="@(t.SchemaName).@(t.TableName)" class="js-next-collapsible" title="@(t.SchemaName).@(t.TableName) created @t.CreationDate.ToZuluTime() modified @t.LastModifiedDate.ToZuluTime()">
                     <td>
                         <a href="#/db/@(Model.Database)/tables/@(t.SchemaName).@(t.TableName)">
                             <span class="text-muted">@(t.SchemaName).</span><span>@t.TableName</span>
@@ -68,7 +68,7 @@
             {
                 <tr>
                     <td colspan="6">
-                        <div class="none-active">There aren't any tables in this database.</div>
+                        <div class="no-content">There aren't any tables in this database.</div>
                     </td>
                 </tr>
             }

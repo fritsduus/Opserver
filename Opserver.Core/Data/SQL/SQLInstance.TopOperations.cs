@@ -11,11 +11,10 @@ namespace StackExchange.Opserver.Data.SQL
 {
     public partial class SQLInstance
     {
-        public Cache<List<TopOperation>> GetTopOperations(TopSearchOptions options = null)
+        public LightweightCache<List<TopOperation>> GetTopOperations(TopSearchOptions options = null)
         {
-            return Cache<List<TopOperation>>.WithKey(
-                GetCacheKey(nameof(GetTopOperations) + "-" + (options?.GetHashCode() ?? 0).ToString()),
-                UpdateFromSql("Top Operations", conn =>
+            return TimedCache(nameof(GetTopOperations) + "-" + (options?.GetHashCode() ?? 0).ToString(),
+                conn =>
                 {
                     var hasOptions = options != null;
                     var sql = string.Format(GetFetchSQL<TopOperation>(),
@@ -23,22 +22,18 @@ namespace StackExchange.Opserver.Data.SQL
                         hasOptions ? options.ToSQLSearch() : "");
                     sql = sql.Replace("query_plan AS QueryPlan,", "")
                         .Replace("CROSS APPLY sys.dm_exec_query_plan(PlanHandle) AS qp", "");
-                    return conn.QueryAsync<TopOperation>(sql, options);
-                }),
-                15, 5*60);
+                    return conn.Query<TopOperation>(sql, options).AsList();
+                }, 10.Seconds(), 5.Minutes());
         }
 
-        public Cache<TopOperation> GetTopOperation(byte[] planHandle, int? statementStartOffset = null)
+        public LightweightCache<TopOperation> GetTopOperation(byte[] planHandle, int? statementStartOffset = null)
         {
             var clause = " And (qs.plan_handle = @planHandle OR qs.sql_handle = @planHandle)";
             if (statementStartOffset.HasValue) clause += " And qs.statement_start_offset = @statementStartOffset";
-            string sql = string.Format(GetFetchSQL<TopOperation>(), clause, "");
-            return Cache<TopOperation>.WithKey(
-                GetCacheKey(nameof(GetTopOperation) + "-" + planHandle.GetHashCode().ToString() + "-" + statementStartOffset.ToString()),
-                UpdateFromSql("Top Operations",
-                    conn => conn.QueryFirstOrDefaultAsync<TopOperation>(sql,
-                        new {planHandle, statementStartOffset, MaxResultCount = 1})),
-                60, 5*60);
+            var sql = string.Format(GetFetchSQL<TopOperation>(), clause, "");
+            return TimedCache(nameof(GetTopOperation) + "-" + planHandle.GetHashCode().ToString() + "-" + statementStartOffset.ToString(),
+                conn => conn.QueryFirstOrDefault<TopOperation>(sql, new { planHandle, statementStartOffset, MaxResultCount = 1 }),
+                60.Seconds(), 60.Seconds());
         }
 
         public class TopOperation : ISQLVersioned
@@ -219,12 +214,12 @@ FROM (SELECT TOP (@MaxResultCount)
             public string Search { get; set; }
             public int? MaxResultCount { get; set; }
             public int? Database { get; set; }
-
-            public static TopSearchOptions Default => new TopSearchOptions().SetDefaults();
             
-            private int DefaultMinExecs = 25;
-            private int DefaultLastRunSeconds = 24 * 60 * 60;
-            private int DefaultMaxResultCount = 100;
+            public static readonly TopSearchOptions Default = new TopSearchOptions().SetDefaults();
+
+            private const int DefaultMinExecs = 25;
+            private const int DefaultLastRunSeconds = 24*60*60;
+            private const int DefaultMaxResultCount = 100;
 
             public TopSearchOptions SetDefaults()
             {
@@ -273,6 +268,21 @@ FROM (SELECT TOP (@MaxResultCount)
             public string ToSQLOrder()
             {
                 return Sort.HasValue ? $"\nORDER BY {Sort} DESC" : "";
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hashCode = _lastRunSeconds.GetHashCode();
+                    hashCode = (hashCode*397) ^ Sort.GetHashCode();
+                    hashCode = (hashCode*397) ^ MinExecs.GetHashCode();
+                    hashCode = (hashCode*397) ^ MinExecsPerMin.GetHashCode();
+                    hashCode = (hashCode*397) ^ (Search?.GetHashCode() ?? 0);
+                    hashCode = (hashCode*397) ^ MaxResultCount.GetHashCode();
+                    hashCode = (hashCode*397) ^ Database.GetHashCode();
+                    return hashCode;
+                }
             }
         }
     }

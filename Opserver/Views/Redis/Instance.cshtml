@@ -1,5 +1,4 @@
-﻿@using System.Globalization
-@using StackExchange.Opserver.Data.Redis
+﻿@using StackExchange.Opserver.Data.Redis
 @using Roles = StackExchange.Opserver.Models.Roles
 @model StackExchange.Opserver.Views.Redis.DashboardModel
 @{
@@ -11,10 +10,10 @@
     <small class="text-muted">(<a href="#/redis/summary/info">View INFO</a>)</small>
     @Helpers.PollNow(i)
 </h5>
-<div class="row js-refresh" data-name="instance-summary">
+<div class="row small js-refresh" data-name="instance-summary">
     <div class="col-md-6">
         <div class="panel panel-default">
-            <div class="panel-heading">Summary <span class="small text-muted">(<a href="#/redis/summary/config">view config</a> - <a href="/redis/instance/get-config/@i.HostAndPort-config.zip">download</a>)</span></div>
+            <div class="panel-heading">@Icon.Server Summary <span class="text-muted">(<a href="#/redis/summary/config">view config</a> - <a href="~/redis/instance/get-config/@i.HostAndPort-config.zip">download</a>)</span></div>
             <div class="panel-body small">
                 @{
                     var info = i.Info.SafeData(true);
@@ -43,10 +42,10 @@
             </div>
         </div>
         <div class="panel panel-default">
-            <div class="panel-heading">Replication</div>
+            <div class="panel-heading">@Icon.Cluster Replication</div>
             <div class="panel-body small">
                 <div class="value-block col-md-4">
-                    @i.Role.GetDescription()
+                    @i.RoleDescription
                     @*@if (i.IsSlave)
                     {
                         var offset = i.Master.Replication.MasterReplicationOffset - i.Replication.SlaveReplicationOffset;
@@ -77,7 +76,7 @@
                 }
 
                 <div class="value-block col-md-4" title="@uptime.ToReadableString()">
-                    @if (i.Tiebreaker.HasData())
+                    @if (i.Tiebreaker.ContainsData)
                     {
                         @i.Tiebreaker.Data
                     }
@@ -114,8 +113,8 @@
                         <div class="redis-instance">
                             @i.IconSpan() <a href="?node=@i.HostAndPort">@i.HostAndPort</a> <span class="text-muted">(Current)</span>
                         </div>
-                        var slaves = i.SlaveInstances;
-                        if (slaves.Count > 0)
+                        var slaves = i.SlaveInstances.Where(s => s != null);
+                        if (slaves.Any())
                         {
                             <div class="redis-instance">
                                 @foreach (var s in slaves)
@@ -131,7 +130,7 @@
             </div>
         </div>
         <div class="panel panel-default">
-            <div class="panel-heading">Memory</div>
+            <div class="panel-heading">@Icon.Memory Memory</div>
             <div class="panel-body small">
                 <div class="value-block col-md-3" title="@info.Memory.UsedMemory.ToComma() bytes">
                     @info.Memory.UsedMemory.ToSize()
@@ -161,7 +160,7 @@
             </div>
         </div>
         <div class="panel panel-default">
-            <div class="panel-heading">Persistence</div>
+            <div class="panel-heading">@Icon.Disk Persistence</div>
             <div class="panel-body small">
                 @{
                     var lastSave = info.Persistence.RDBLastSaveTime.ToDateTime();
@@ -227,7 +226,7 @@
             </div>
         </div>
         <div class="panel panel-default">
-            <div class="panel-heading">Keyspace (@(info.Keyspace.KeyData.Sum(k => k.Value.Keys).Pluralize("key", "keys")))</div>
+            <div class="panel-heading">@Icon.Database Keyspace (@(info.Keyspace.KeyData.Sum(k => k.Value.Keys).Pluralize("key", "keys")))</div>
             <div class="panel-body small">
                 <table class="table table-striped table-hover table-super-condensed">
                     <thead>
@@ -241,8 +240,8 @@
                         @foreach (var kd in info.Keyspace.KeyData)
                         {
                             <tr>
-                                <td>@kd.Key.ToString()@if (Current.User.IsInRole(Roles.RedisAdmin))
-                                { <span class="text-muted">(<a href="/redis/analyze/memory?node=@i.HostAndPort&db=@kd.Key.ToString()" class="node-name-link">analyze</a>)</span>}</td>
+                                <td>@kd.Key.ToString()@if (Current.IsInRole(Roles.RedisAdmin))
+                                { <span class="text-muted">(<a href="~/redis/analyze/memory?node=@i.HostAndPort&db=@kd.Key.ToString()">analyze</a>)</span>}</td>
                                 <td>@kd.Value.Keys.ToComma()</td>
                                 <td>@kd.Value.Expires.ToComma()</td>
                             </tr>
@@ -254,7 +253,7 @@
     </div>
     <div class="col-md-6">
         <div class="panel panel-default">
-            <div class="panel-heading">Stats</div>
+            <div class="panel-heading">@Icon.Stats Stats</div>
             <div class="panel-body small">
                 <div class="value-block col-md-4">
                     @info.Stats.TotalConnectionsReceived.ToComma()
@@ -288,7 +287,7 @@
             </div>
         </div>
         <div class="panel panel-default">
-            <div class="panel-heading">Clients <span class="small text-muted">(<a class="top-right-nav" href="#/redis/summary/clients">View All</a>)</span></div>
+            <div class="panel-heading">@Icon.Users Clients <span class="text-muted">(<a class="top-right-nav" href="#/redis/summary/clients">View All</a>)</span></div>
             <div class="panel-body small">
                 @if (i.Clients.Data == null)
                 {
@@ -338,9 +337,9 @@
             </div>
         </div>
         <div class="panel panel-default">
-            <div class="panel-heading">Slow Log <span class="small text-muted">(<a class="top-right-nav" href="#/redis/summary/slow-log">View All</a>)</span></div>
+            <div class="panel-heading">@Icon.Time Slow Log <span class="text-muted">(<a class="top-right-nav" href="#/redis/summary/slow-log">View All</a>)</span></div>
             <div class="panel-body small">
-                @if (i.SlowLog.HasData() && i.SlowLog.Data.Any())
+                @if (i.SlowLog.Data?.Any() ?? false)
                 {
                     <table class="table table-striped table-hover table-super-condensed">
                         <thead>

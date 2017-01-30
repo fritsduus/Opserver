@@ -1,4 +1,4 @@
-﻿@using System.Globalization
+﻿@using StackExchange.Opserver.Controllers
 @using StackExchange.Opserver.Views.Elastic
 @model DashboardModel
 @{
@@ -18,17 +18,17 @@
         @Helpers.PollNow(c)
     </h5>
     <p></p>
-    <div class="row js-refresh" data-name="node-summary">
+    <div class="row small js-refresh" data-name="node-summary">
         <div class="col-md-6">
             <div class="panel panel-default">
-                <div class="panel-heading">Summary for @n.GUID <span class="small text-muted">(<a href="#/elastic/node/settings">View Settings</a>)</span></div>
+                <div class="panel-heading">@Icon.Server Summary for @n.GUID <span class="text-muted">(<a href="#/elastic/node/settings">View Settings</a>)</span></div>
                 <div class="panel-body small">
                     <div class="value-block col-md-3 col-sm-6" title="Host: @n.Hostname
 Transport: @n.Stats?.TransportAddress">
                         @c.Name
                         <label>
                             Cluster
-                            <span class="text-muted">(<a href="/elastic/cluster?cluster=@c.Name.UrlEncode()&node=@n.Name.UrlEncode()">view</a>)</span>
+                            <span class="text-muted">(<a href="@Url.Action(nameof(ElasticController.Cluster), new { cluster = c.Name, node = n.Name })">view</a>)</span>
                         </label>
                     </div>
                     <div class="value-block col-md-3 col-sm-6">
@@ -46,7 +46,7 @@ Transport: @n.Stats?.TransportAddress">
                 </div>
             </div>
             <div class="panel panel-default">
-                <div class="panel-heading">System</div>
+                <div class="panel-heading">@Icon.Stats System</div>
                 <div class="panel-body small">
                     <div class="value-block col-md-3 col-sm-6">
                         @if (jvm?.UptimeInMilliseconds > 0)
@@ -113,7 +113,7 @@ Transport: @n.Stats?.TransportAddress">
                 var uptime = TimeSpan.FromMilliseconds(jvm.UptimeInMilliseconds);
                 var gcTime = TimeSpan.FromMilliseconds(jvm.GC.CollectionTimeInMilliseconds);
                 <div class="panel panel-default">
-                    <div class="panel-heading">Java Virtual Machine <span class="small text-muted">(PID: @(cnd?.JVM.PID.ToString()))</span></div>
+                    <div class="panel-heading">@Icon.VM Java Virtual Machine <span class="text-muted">(PID: @(cnd?.JVM.PID.ToString()))</span></div>
                     <div class="panel-body small">
                         <div class="value-block col-md-4 col-sm-6" title="@uptime.ToReadableString()">
                             @uptime.ToTimeStringMini(3)
@@ -154,7 +154,7 @@ Transport: @n.Stats?.TransportAddress">
             @if (transport != null)
             {
                 <div class="panel panel-default">
-                    <div class="panel-heading">Network</div>
+                    <div class="panel-heading">@Icon.Network Network</div>
                     <div class="panel-body small">
                         <div class="value-block col-md-3 col-sm-6">
                             @(n?.HTTP?.PublishAddressPretty)
@@ -178,7 +178,7 @@ Transport: @n.Stats?.TransportAddress">
             @if (fs?.Data != null)
             {
                 <div class="panel panel-default">
-                    <div class="panel-heading">File System Mounts</div>
+                    <div class="panel-heading">@Icon.Disk File System Mounts</div>
                     <div class="panel-body small">
                         @foreach (var fsd in fs.Data)
                         {

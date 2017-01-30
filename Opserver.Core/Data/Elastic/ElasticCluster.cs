@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using StackExchange.Profiling;
 
@@ -9,8 +10,9 @@ namespace StackExchange.Opserver.Data.Elastic
     public partial class ElasticCluster : PollNode, ISearchableNode, IMonitedService
     {
         string ISearchableNode.Name => SettingsName;
-        string ISearchableNode.DisplayName => SettingsName; 
-        public int RefreshInterval => Settings.RefreshIntervalSeconds;
+        string ISearchableNode.DisplayName => SettingsName;
+        private TimeSpan? _refreshInteval;
+        public TimeSpan RefreshInterval => _refreshInteval ?? (_refreshInteval = Settings.RefreshIntervalSeconds.Seconds()).Value;
         string ISearchableNode.CategoryName => "elastic";
         public ElasticSettings.Cluster Settings { get; }
         private string SettingsName => Settings.Name;
@@ -79,27 +81,36 @@ namespace StackExchange.Opserver.Data.Elastic
         //                                        : ConfigSettings.DownRefreshIntervalSeconds;
         //}
 
+
+        private Cache<T> GetElasticCache<T>(
+            Func<Task<T>> get,
+            [CallerMemberName] string memberName = "",
+            [CallerFilePath] string sourceFilePath = "",
+            [CallerLineNumber] int sourceLineNumber = 0
+            ) where T : class, new()
+        {
+            return new Cache<T>(this, "Elastic Fetch: " + SettingsName + ":" + typeof(T).Name,
+                RefreshInterval,
+                get,
+                addExceptionData: e => e.AddLoggedData("Cluster", SettingsName).AddLoggedData("Type", typeof(T).Name),
+                memberName: memberName,
+                sourceFilePath: sourceFilePath,
+                sourceLineNumber: sourceLineNumber
+            );
+        }
+
         public async Task<T> GetAsync<T>(string path) where T : class
         {
-            using(MiniProfiler.Current.CustomTiming("elastic", path))
-            foreach (var n in KnownNodes)
-            {
-                var result = await n.GetAsync<T>(path).ConfigureAwait(false);
-                if (result != null)
-                    return result;
-            }
+            using (MiniProfiler.Current.CustomTiming("elastic", path))
+                foreach (var n in KnownNodes)
+                {
+                    var result = await n.GetAsync<T>(path).ConfigureAwait(false);
+                    if (result != null)
+                        return result;
+                }
             return null;
         }
-        
-        public Func<Cache<T>, Task> UpdateFromElastic<T>(string opName, Func<Task<T>> get) where T : class, new()
-        {
-            return UpdateCacheItem(description: "Elastic Fetch: " + SettingsName + ":" + typeof (T).Name,
-                getData: get,
-                addExceptionData:
-                    e => e.AddLoggedData("Cluster", SettingsName)
-                        .AddLoggedData("Type", typeof (T).Name));
-        }
-        
+
         private static MonitorStatus ColorToStatus(string color)
         {
             switch (color)

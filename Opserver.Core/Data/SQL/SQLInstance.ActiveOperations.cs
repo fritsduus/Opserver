@@ -5,22 +5,22 @@ using System.IO;
 using System.Linq;
 using System.Xml.Serialization;
 using StackExchange.Opserver.Data.SQL.QueryPlans;
+using Dapper;
 
 namespace StackExchange.Opserver.Data.SQL
 {
     public partial class SQLInstance
     {
-        public Cache<List<ActiveOperation>> GetActiveOperations(ActiveSearchOptions options)
+        public LightweightCache<List<ActiveOperation>> GetActiveOperations(ActiveSearchOptions options)
         {
             if (options == null)
                 throw new ArgumentNullException(nameof(options), "Active Operations requires options");
 
-            return Cache<List<ActiveOperation>>.WithKey(GetCacheKey("ActiveOperations-" + options.GetHashCode().ToString()),
-                UpdateFromSql(nameof(GetActiveOperations),
-                    async conn => (await conn.QueryAsync<WhoIsActiveRow>(options.ToSQLQuery(), options, commandTimeout: 300).ConfigureAwait(false))
-                            .Select(row => new ActiveOperation(row))
-                            .ToList()),
-                10, 5 * 60);
+            return TimedCache("ActiveOperations-" + options.GetHashCode().ToString(),
+                conn => conn.Query<WhoIsActiveRow>(options.ToSQLQuery(), options, commandTimeout: 300)
+                                .Select(row => new ActiveOperation(row))
+                                .ToList(),
+                10.Seconds(), 5.Minutes());
         }
 
         public class WhoIsActiveRow

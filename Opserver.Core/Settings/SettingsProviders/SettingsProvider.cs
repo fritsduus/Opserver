@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Configuration;
+using System.IO;
 
 namespace StackExchange.Opserver.SettingsProviders
 {
@@ -11,6 +12,8 @@ namespace StackExchange.Opserver.SettingsProviders
         public string Path { get; set; }
         public string ConnectionString { get; set; }
 
+        public event Action OnChanged;
+
         // Accessors for built-in types
         public PagerDutySettings PagerDuty => GetSettings<PagerDutySettings>();
         public CloudFlareSettings CloudFlare => GetSettings<CloudFlareSettings>();
@@ -21,8 +24,6 @@ namespace StackExchange.Opserver.SettingsProviders
         public PollingSettings Polling => GetSettings<PollingSettings>();
         public RedisSettings Redis => GetSettings<RedisSettings>();
         public SQLSettings SQL => GetSettings<SQLSettings>();
-        // Generic build settings later
-        public TeamCitySettings TeamCity => GetSettings<TeamCitySettings>();
         public JiraSettings Jira => GetSettings<JiraSettings>();
 
         public abstract T GetSettings<T>() where T : Settings<T>, new();
@@ -56,6 +57,15 @@ namespace StackExchange.Opserver.SettingsProviders
             }
             var p = (SettingsProvider) Activator.CreateInstance(t, section);
             return p;
+        }
+
+        protected void SettingsChanged() => OnChanged?.Invoke();
+
+        protected void AddDirectoryWatcher()
+        {
+            var watcher = new FileSystemWatcher(Path);
+            watcher.Changed += (s, args) => SettingsChanged();
+            watcher.EnableRaisingEvents = true;
         }
     }
 }

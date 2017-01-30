@@ -9,11 +9,11 @@ namespace StackExchange.Opserver.Data
     public static class PollingEngine
     {
         private static readonly object _addLock = new object();
+        private static readonly object _pollAllLock = new object();
+        public static HashSet<PollNode> AllPollNodes = new HashSet<PollNode>();
 
-        public static HashSet<PollNode> AllPollNodes;
         private static Thread _globalPollingThread;
         private static volatile bool _shuttingDown;
-        private static readonly object _pollAllLock;
         private static long _totalPollIntervals;
         internal static long _activePolls;
         private static DateTime? _lastPollAll;
@@ -21,8 +21,6 @@ namespace StackExchange.Opserver.Data
 
         static PollingEngine()
         {
-            _pollAllLock = new object();
-            AllPollNodes = new HashSet<PollNode>();
             StartPolling();
         }
         
@@ -141,22 +139,32 @@ namespace StackExchange.Opserver.Data
         {
             while (!_shuttingDown)
             {
-                PollAllAsync();
+                PollAllAndForget();
                 Thread.Sleep(1000);
             }
         }
         
-        public static void PollAllAsync(bool force = false)
+        public static void PollAllAndForget()
         {
             if (!Monitor.TryEnter(_pollAllLock, 500)) return;
 
             Interlocked.Increment(ref _totalPollIntervals);
             try
             {
-                Parallel.ForEach(AllPollNodes, n =>
+                foreach (var n in AllPollNodes)
                 {
-                    n.PollAsync(force);
-                });
+                    if (n.IsPolling)
+                    {
+                        continue;
+                    }
+                    n.PollAsync().ContinueWith(t =>
+                        {
+                            if (t.IsFaulted) Current.LogException(t.Exception);
+                        },
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
+                }
             }
             catch (Exception e)
             {
@@ -175,9 +183,8 @@ namespace StackExchange.Opserver.Data
         /// <param name="nodeType">Type of node to poll</param>
         /// <param name="key">Unique key of the node to poll</param>
         /// <param name="cacheGuid">If included, the specific cache to poll</param>
-        /// <param name="sync">Whether to perform a synchronous poll operation (async by default)</param>
         /// <returns>Whether the poll was successful</returns>
-        public static async Task<bool> PollAsync(string nodeType, string key, Guid? cacheGuid = null, bool sync = false)
+        public static async Task<bool> PollAsync(string nodeType, string key, Guid? cacheGuid = null)
         {
             var node = AllPollNodes.FirstOrDefault(p => p.NodeType == nodeType && p.UniqueKey == key);
             if (node == null) return false;
@@ -185,17 +192,14 @@ namespace StackExchange.Opserver.Data
             if (cacheGuid.HasValue)
             {
                 var cache = node.DataPollers.FirstOrDefault(p => p.UniqueId == cacheGuid);
-                return cache != null && await cache.PollAsync(true).ConfigureAwait(false) > 0;
+                if (cache != null)
+                {
+                    await cache.PollGenericAsync(true).ConfigureAwait(false);
+                }
+                return cache?.LastPollSuccessful ?? false;
             }
             // Polling an entire server
-            if (sync)
-            {
-                node.Poll(true);
-            }
-            else
-            {
-                node.PollAsync(true);
-            }
+            await node.PollAsync(true);
             return true;
         }
         
@@ -207,6 +211,18 @@ namespace StackExchange.Opserver.Data
         public static PollNode GetNode(string type, string key)
         {
             return AllPollNodes.FirstOrDefault(pn => string.Equals(pn.NodeType, type, StringComparison.InvariantCultureIgnoreCase) && pn.UniqueKey == key);
+        }
+
+        public static Cache GetCache(Guid id)
+        {
+            foreach (var pn in AllPollNodes)
+            {
+                foreach (var c in pn.DataPollers)
+                {
+                    if (c.UniqueId == id) return c;
+                }
+            }
+            return null;
         }
     }
 }

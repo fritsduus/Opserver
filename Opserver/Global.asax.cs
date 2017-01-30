@@ -31,7 +31,7 @@ namespace StackExchange.Opserver
             routes.MapMvcAttributeRoutes();
 
             // MUST be the last route as a catch-all!
-            routes.MapRoute("", "{*url}", new { controller = "Error", action = "PageNotFound" });
+            routes.MapRoute("", "{*url}", new { controller = "Home", action = "PageNotFound" });
         }
 
         private static void RegisterBundles(BundleCollection bundles)
@@ -70,6 +70,9 @@ namespace StackExchange.Opserver
 
             // enable custom model binder
             ModelBinders.Binders.DefaultBinder = new ProfiledModelBinder();
+
+            // When settings change, reload the app pool
+            Current.Settings.OnChanged += HttpRuntime.UnloadAppDomain;
         }
 
         protected void Application_End()
@@ -86,6 +89,7 @@ namespace StackExchange.Opserver
             MiniProfiler.Settings.IgnoredPaths = paths.ToArray();
             MiniProfiler.Settings.PopupMaxTracesToShow = 5;
             MiniProfiler.Settings.ProfilerProvider = new OpserverProfileProvider();
+            MiniProfiler.Settings.Storage = new MiniProfilerCacheStorage(TimeSpan.FromMinutes(10));
             OpserverProfileProvider.EnablePollerProfiling = SiteSettings.PollerProfiling;
 
             var copy = ViewEngines.Engines.ToList();

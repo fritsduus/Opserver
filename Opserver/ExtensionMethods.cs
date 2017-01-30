@@ -6,9 +6,11 @@ using System.Web;
 using System.Web.Mvc;
 using Jil;
 using StackExchange.Opserver.Data;
+using StackExchange.Opserver.Data.Dashboard;
 using StackExchange.Opserver.Data.SQL;
 using StackExchange.Opserver.Helpers;
 using StackExchange.Opserver.Views.Shared;
+using UnconstrainedMelody;
 
 namespace StackExchange.Opserver
 {
@@ -74,6 +76,26 @@ namespace StackExchange.Opserver
             }
         }
 
+        public static IHtmlString IconSpan(this Node node)
+        {
+            if (node == null)
+                return @"<span class=""text-muted"">●</span>".AsHtml();
+
+            var monitorStatusClass = node.MonitorStatus.TextClass(true);
+            switch (node.HardwareType)
+            {
+                case HardwareType.Physical:
+                    return $@"<i class=""{monitorStatusClass} fa fa-server"" aria-hidden=""true"" title=""Physical""></i>".AsHtml();
+                case HardwareType.VirtualMachine:
+                    return $@"<i class=""{monitorStatusClass} fa fa-cloud"" aria-hidden=""true"" title=""Virtual Machine""></i>".AsHtml();
+                case HardwareType.Network:
+                    return $@"<i class=""{monitorStatusClass} fa fa-exchange"" aria-hidden=""true"" title=""Network""></i>".AsHtml();
+                //case HardwareType.Unknown:
+                default:
+                    return $@"<i class=""{monitorStatusClass} fa fa-question-circle-o"" aria-hidden=""true"" title=""Unknown hardware type""></i>".AsHtml();
+            }
+        }
+
         public static IHtmlString IconSpan(this IMonitorStatus status)
         {
             if (status == null)
@@ -107,18 +129,18 @@ namespace StackExchange.Opserver
             switch (status)
             {
                 case MonitorStatus.Good:
-                    return StatusIndicator.UpCustomSpam(text, tooltip);
+                    return StatusIndicator.UpCustomSpan(text, tooltip);
                 case MonitorStatus.Warning:
-                    return StatusIndicator.WarningCustomSpam(text, tooltip);
+                    return StatusIndicator.WarningCustomSpan(text, tooltip);
                 case MonitorStatus.Critical:
-                    return StatusIndicator.DownCustomSpam(text, tooltip);
+                    return StatusIndicator.DownCustomSpan(text, tooltip);
                 default:
-                    return StatusIndicator.UnknownCustomSpam(text, tooltip);
+                    return StatusIndicator.UnknownCustomSpan(text, tooltip);
             }
         }
 
         public static string RawClass(this IMonitorStatus status) => RawClass(status.MonitorStatus);
-        public static string RawClass(this MonitorStatus status, bool showGood = false)
+        public static string RawClass(this MonitorStatus status, bool showGood = false, bool maint = false)
         {
             switch (status)
             {
@@ -128,6 +150,8 @@ namespace StackExchange.Opserver
                     return "warning";
                 case MonitorStatus.Critical:
                     return "danger";
+                case MonitorStatus.Maintenance:
+                    return maint ? "info" : "muted";
                 default:
                     return "muted";
             }
@@ -486,28 +510,28 @@ namespace StackExchange.Opserver
             {
                 case SynchronizationStates.Synchronizing:
                 case SynchronizationStates.Synchronized:
-                    return StatusIndicator.UpCustomSpam(state.GetDescription(), tooltip);
+                    return StatusIndicator.UpCustomSpan(state.Value.GetDescription(), tooltip);
                 case SynchronizationStates.NotSynchronizing:
                 case SynchronizationStates.Reverting:
                 case SynchronizationStates.Initializing:
-                    return StatusIndicator.DownCustomSpam(state.GetDescription(), tooltip);
+                    return StatusIndicator.DownCustomSpan(state.Value.GetDescription(), tooltip);
                 default:
-                    return StatusIndicator.UnknownCustomSpam(state.GetDescription(), tooltip);
+                    return StatusIndicator.UnknownCustomSpan(state.Value.GetDescription(), tooltip);
             }
         }
         public static IHtmlString ToSpan(this ReplicaRoles? state, string tooltip = null, bool abbreviate = false)
         {
-            var desc = state.GetDescription();
+            var desc = state.HasValue ? state.Value.GetDescription() : "";
             if (abbreviate) desc = desc.Substring(0, 1);
             switch (state)
             {
                 case ReplicaRoles.Primary:
-                    return StatusIndicator.UpCustomSpam(desc, tooltip);
+                    return StatusIndicator.UpCustomSpan(desc, tooltip);
                 case ReplicaRoles.Secondary:
                     return desc.AsHtml();
                 //case ReplicaRoles.Resolving:
                 default:
-                    return StatusIndicator.DownCustomSpam(desc, tooltip);
+                    return StatusIndicator.DownCustomSpan(desc, tooltip);
             }
         }
     }

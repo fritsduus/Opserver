@@ -1,20 +1,19 @@
-﻿using System;
+﻿using Dapper;
+using System;
 using System.Collections.Generic;
 
 namespace StackExchange.Opserver.Data.SQL
 {
     public partial class SQLInstance
     {
-        public Cache<List<SQLErrorLogInfo>> GetErrorLog(int minutesAgo)
+        public LightweightCache<List<SQLErrorLogInfo>> GetErrorLog(int minutesAgo)
         {
-            return Cache<List<SQLErrorLogInfo>>.WithKey(
-                GetCacheKey("ErrorInfo-" + minutesAgo.ToString()),
-                UpdateFromSql(nameof(GetErrorLog) + "(" + minutesAgo.ToString() + " minutes)", conn =>
+            return TimedCache("ErrorInfo-" + minutesAgo.ToString(),
+                conn =>
                 {
                     var sql = GetFetchSQL<SQLErrorLogInfo>();
-                    return conn.QueryAsync<SQLErrorLogInfo>(sql, new {minutesAgo});
-                }),
-                RefreshInterval, 5*60);
+                    return conn.Query<SQLErrorLogInfo>(sql, new { minutesAgo }).AsList();
+                }, RefreshInterval, 5.Minutes());
         }
 
         public class SQLErrorLogInfo : ISQLVersioned

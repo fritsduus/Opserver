@@ -1,5 +1,4 @@
-﻿@using System.Globalization
-@using StackExchange.Opserver.Data.SQL
+﻿@using StackExchange.Opserver.Data.SQL
 @using StackExchange.Opserver.Views.SQL
 @model DashboardModel
 @{
@@ -71,7 +70,7 @@
             SQLNode.AGDatabaseReplica replica;
                 <tr class="database-row @db.RowClass()" data-dbname="@db.Name" title="VLF Count @(db.VLFCount?.ToComma() ?? "unknown")">
                     <td>
-                        <span class="glyphicon glyphicon-tasks @DatabasesModel.GetDatabaseClass(db)"></span>
+                        <i class="fa fa-database @DatabasesModel.GetDatabaseClass(db)" aria-hidden="true"></i>
                         @db.Name
                         @if (db.IsReadOnly)
                         {
@@ -137,7 +136,7 @@ Used: @((db.LogSizeUsedMB.Value*1024*1024).ToSize())
             {
                 <tr>
                     <td colspan="7">
-                        <div class="none-active">There seem to be no databases, even master, this doesn't seem right.</div>
+                        <div class="no-content">There seem to be no databases, even master, this doesn't seem right.</div>
                     </td>
                 </tr>
             }

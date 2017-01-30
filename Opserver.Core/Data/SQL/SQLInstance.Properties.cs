@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 using Dapper;
 
 namespace StackExchange.Opserver.Data.SQL
@@ -7,29 +6,21 @@ namespace StackExchange.Opserver.Data.SQL
     public partial class SQLInstance
     {
         private Cache<SQLServerProperties> _serverProperties;
-        public Cache<SQLServerProperties> ServerProperties
-        {
-            get
-            {
-                return _serverProperties ?? (_serverProperties = new Cache<SQLServerProperties>
+        public Cache<SQLServerProperties> ServerProperties =>
+            _serverProperties ?? (_serverProperties = GetSqlCache(
+                nameof(ServerProperties), async conn =>
                 {
-                    CacheForSeconds = RefreshInterval,
-                    UpdateCache = UpdateFromSql(nameof(ServerProperties), async conn =>
-                            {
-                                var result = await conn.QueryFirstOrDefaultAsync<SQLServerProperties>(SQLServerProperties.FetchSQL).ConfigureAwait(false);
-                                if (result != null)
-                                {
-                                    Version = result.ParsedVersion;
-                                    if (result.PhysicalMemoryBytes > 0)
-                                    {
-                                        CurrentMemoryPercent = result.CommittedBytes/(decimal) result.PhysicalMemoryBytes*100;
-                                    }
-                                }
-                                return result;
-                            })
-                    });
-            }
-        }
+                    var result = await conn.QueryFirstOrDefaultAsync<SQLServerProperties>(SQLServerProperties.FetchSQL).ConfigureAwait(false);
+                    if (result != null)
+                    {
+                        Version = result.ParsedVersion;
+                        if (result.PhysicalMemoryBytes > 0)
+                        {
+                            CurrentMemoryPercent = result.CommittedBytes/(decimal) result.PhysicalMemoryBytes*100;
+                        }
+                    }
+                    return result;
+                }));
 
         public decimal? CurrentMemoryPercent { get; private set; }
 
@@ -151,6 +142,23 @@ Else
        Cast(bpool_commit_target as bigint) * 8 * 1024 CommittedTargetBytes';
 Exec (@sql + ' 
   From sys.dm_os_sys_info');";
+        }
+
+        public class SQLServerPermissions
+        {
+
+            // IsNull(Cast(IS_SRVROLEMEMBER ('sysadmin') as Bit), 0) IsSysadmin
+            public bool HasSyadmin { get; internal set; }
+
+            // TODO: HasViewServerState permission, but SQL 2000 needs love
+            // IsNull(Cast((Select 1 From fn_my_permissions(NULL, 'SERVER') Where permission_name = 'VIEW SERVER STATE') as Bit), 0) HasViewServerState
+            public bool HasViewServerState { get; internal set; }
+
+
+            internal const string FetchSQL = @"
+Select IsNull(Cast(IS_SRVROLEMEMBER ('sysadmin') as Bit), 0) IsSysadmin,
+       IsNull(Cast((Select 1 From fn_my_permissions(NULL, 'SERVER') Where permission_name = 'VIEW SERVER STATE') as Bit), 0) HasViewServerState
+";
         }
     }
 }

@@ -32,10 +32,12 @@
                 return int.TryParse(i.Name, out j) ? j : 0;
             }).ThenBy(i => i.Name))
             {
-                ElasticCluster.IndexStatsInfo.IndexStats iStats;
-                stats.Indexes.TryGetValue(i.Name, out iStats);
+                ElasticCluster.IndexStatsInfo.IndexStats iStats = null;
+                stats?.Indexes?.TryGetValue(i.Name, out iStats);
                 <tr class="@i.RowClass()">
-                    <td>@i.IconSpan() @c.GetIndexAliasedName(i.Name)</td>
+                    <td>
+                        <i class="fa fa-database @i.MonitorStatus.TextClass(true)" aria-hidden="true"></i> @c.GetIndexAliasedName(i.Name)
+                    </td>
                     @if (iStats != null)
                     {
                         <td>@(iStats.Total.Search.QueryTotal.ToComma()) <span class="text-muted">(@(iStats.Total.Search.QueryCurrent.ToComma()))</span></td>
@@ -63,7 +65,6 @@
             {
                 var indexStats = stats.Indexes?.Values;
                 <tr class="total-row">
-                    <td></td>
                     <td><b>Total</b></td>
                     @if (indexStats != null)
                 {

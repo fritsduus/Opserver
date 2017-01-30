@@ -14,6 +14,7 @@ namespace StackExchange.Opserver.SettingsProviders
         {
             if (Path.StartsWith("~\\"))
                 Path = Path.Replace("~\\", AppDomain.CurrentDomain.BaseDirectory);
+            AddDirectoryWatcher();
         }
 
         private readonly object _loadLock = new object();
@@ -21,12 +22,9 @@ namespace StackExchange.Opserver.SettingsProviders
 
         public override T GetSettings<T>()
         {
-            object cached;
-            if (_settingsCache.TryGetValue(typeof (T), out cached))
-                return (T) cached;
-
             lock (_loadLock)
             {
+                object cached;
                 if (_settingsCache.TryGetValue(typeof (T), out cached))
                     return (T) cached;
 
@@ -87,7 +85,7 @@ namespace StackExchange.Opserver.SettingsProviders
                 // A race on reloads can happen - ignore as this is during shutdown
                 if (!e.Message.Contains("The process cannot access the file"))
                     Opserver.Current.LogException("Error loading settings from " + path, e);
-                return default(T);
+                return new T();
             }
         }
     }

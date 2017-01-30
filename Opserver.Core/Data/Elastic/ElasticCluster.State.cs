@@ -8,13 +8,12 @@ namespace StackExchange.Opserver.Data.Elastic
     {
         private Cache<ClusterStateInfo> _state;
 
-        public Cache<ClusterStateInfo> State => _state ?? (_state = new Cache<ClusterStateInfo>
-        {
-            CacheForSeconds = RefreshInterval,
-            UpdateCache = UpdateFromElastic(nameof(State), async () =>
+        public Cache<ClusterStateInfo> State => _state ?? (_state = GetElasticCache(async () =>
                 await GetAsync<ClusterStateInfo>("_cluster/state/version,master_node,nodes,routing_table,routing_nodes/").ConfigureAwait(false))
-        });
-        
+        );
+
+        public NodeInfo MasterNode => Nodes.Data?.Nodes?.FirstOrDefault(n => State?.Data?.MasterNode == n.GUID);
+
         public IEnumerable<ClusterStateInfo.ShardState> TroubledShards => AllShards.Where(s => s.State != "STARTED");
         public List<ClusterStateInfo.ShardState> AllShards => State.Data?.AllShards ?? new List<ClusterStateInfo.ShardState>();
         

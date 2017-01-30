@@ -1,4 +1,4 @@
-﻿@using System.Globalization
+﻿@using StackExchange.Opserver.Controllers
 @using StackExchange.Opserver.Data.Elastic
 @using StackExchange.Opserver.Views.Elastic
 @model DashboardModel
@@ -12,11 +12,11 @@
         @c.IconSpan() @c.Name
         @Helpers.PollNow(c)
     </h5>
-    <div class="row js-refresh" data-name="node-summary">
+    <div class="row small js-refresh" data-name="node-summary">
         <div class="col-md-6">
             @Html.Partial("Cluster.Panel.Stats", c)
             <div class="panel panel-default">
-                <div class="panel-heading">@(c.Nodes?.Data?.Nodes?.Count.Pluralize("Node"))</div>
+                <div class="panel-heading">@Icon.Server @(c.Nodes?.Data?.Nodes?.Count.Pluralize("Node"))</div>
                 <div class="panel-body small">
                     @foreach (var n in nodes)
                     {
@@ -29,7 +29,7 @@
                         <div class="row">
                             <h6 class="col-xs-12 page-header">
                                 @n.IconSpan()
-                                <a href="/elastic/node?cluster=@c.Name.UrlEncode()&node=@n.Name.UrlEncode()">
+                                <a href="@Url.Action(nameof(ElasticController.Node), new { cluster = c.Name, node = n.Name })">
                                     @n.ShortName
                                 </a>
                                 @if (isMaster)

@@ -1,7 +1,8 @@
 ﻿window.Status = (function() {
 
     var loadersList = {},
-        registeredRefreshes = {};
+        registeredRefreshes = {},
+        refreshInteralMultiplier = 1;
 
     function registerRefresh(name, callback, interval, paused) {
         var refreshData = {
@@ -11,7 +12,13 @@
             paused: paused // false on init almost always
         };
         registeredRefreshes[name] = refreshData;
-        refreshData.timer = setTimeout(function() { execRefresh(refreshData); }, refreshData.interval);
+        refreshData.timer = setTimeout(function() { execRefresh(refreshData); }, refreshData.interval * refreshInteralMultiplier);
+    }
+
+    function setRefreshInterval(val) {
+        if (val === 0) return; // don't do that
+        console.log('Setting refresh speed to ' + (100/val).toFixed(0) + '% of normal.');
+        refreshInteralMultiplier = val;
     }
 
     function getRefresh(name) {
@@ -19,8 +26,9 @@
     }
 
     function runRefresh(name) {
-        pauseRefresh(name);
-        resumeRefresh(name);
+        console.log('Forcing a full refresh.');
+        pauseRefresh(name, true);
+        resumeRefresh(name, true);
     }
 
     function scheduleRefresh(ms) {
@@ -34,7 +42,7 @@
         var def = refreshData.func();
         if (typeof (def.done) === 'function') {
             def.done(function() {
-                refreshData.timer = setTimeout(function() { execRefresh(refreshData); }, refreshData.interval);
+                refreshData.timer = setTimeout(function() { execRefresh(refreshData); }, refreshData.interval * refreshInteralMultiplier);
             });
         }
 
@@ -42,8 +50,7 @@
         refreshData.timer = 0;
     }
 
-    function pauseRefresh(name) {
-
+    function pauseRefresh(name, silent) {
         function pauseSingleRefresh(r) {
             r.paused = true;
             if (r.timer) {
@@ -61,12 +68,16 @@
         }
 
         if (name && registeredRefreshes[name]) {
-            console.log('Refresh paused for: ' + name);
+            if (!silent) {
+                console.log('Refresh paused for: ' + name);
+            }
             pauseSingleRefresh(registeredRefreshes[name]);
             return;
         }
 
-        console.log('Refresh paused');
+        if (!silent) {
+            console.log('Refresh paused');
+        }
         for (var key in registeredRefreshes) {
             if (registeredRefreshes.hasOwnProperty(key)) {
                 pauseSingleRefresh(registeredRefreshes[key]);
@@ -74,8 +85,7 @@
         }
     }
 
-    function resumeRefresh(name) {
-
+    function resumeRefresh(name, silent) {
         function resumeSingleRefresh(r) {
             if (r.timer) {
                 clearTimeout(r.timer);
@@ -85,12 +95,16 @@
         }
 
         if (name && registeredRefreshes[name]) {
-            console.log('Refresh resumed for: ' + name);
+            if (!silent) {
+                console.log('Refresh resumed for: ' + name);
+            }
             resumeSingleRefresh(registeredRefreshes[name]);
             return;
         }
 
-        console.log('Refresh resumed');
+        if (!silent) {
+            console.log('Refresh resumed');
+        }
         for (var key in registeredRefreshes) {
             if (registeredRefreshes.hasOwnProperty(key)) {
                 resumeSingleRefresh(registeredRefreshes[key]);
@@ -136,6 +150,11 @@
                 options.onClose.call(this);
             }
         });
+        dialog.on('hidden.bs.modal', function() {
+            if ($('.bootbox').length) {
+                $('body').addClass('modal-open');
+            }
+        });
         if (options && options.modalClass) {
             dialog.find('.modal-lg').removeClass('modal-lg').addClass(options.modalClass);
         }
@@ -143,7 +162,12 @@
         // TODO: refresh intervals via header
         $('.js-summary-popup')
             .appendWaveLoader()
-            .load(url, data, function () {
+            .load(Status.options.rootPath + url, data, function (responseText, textStatus, req) {
+                if (textStatus === 'error') {
+                    $(this).closest('.modal-content').find('.modal-header .modal-title').addClass('text-warning').text('Error');
+                    $(this).html('<div class="alert alert-warning"><h5>Error loading</h5><p class="error-stack">Status: ' + req.statusText + '\nCode: ' + req.status + '\nUrl: ' + url + '</p></div><p>Direct link: <a href="' + url + '">' + url + '</a></p>');
+                    return;
+                }
                 var titleElem = $(this).findWithSelf('h4.modal-title');
                 if (titleElem) {
                     $(this).closest('.modal-content').find('.modal-header .modal-title').replaceWith(titleElem);
@@ -226,7 +250,7 @@
 
         if (options.HeaderRefresh) {
             Status.refresh.register('TopBar', function() {
-                return $.ajax('/top-refresh', {
+                return $.ajax(options.rootPath + 'top-refresh', {
                     data: { tab: Status.options.Tab }
                 }).done(function (html) {
                     var resp = $(html);
@@ -259,7 +283,7 @@
             }, Status.options.HeaderRefresh * 1000);
         }
 
-        var resizeTimer;
+        var resizeTimer, dropdownPause;
         $(window).resize(function() {
             clearTimeout(resizeTimer);
             resizeTimer = setTimeout(function() {
@@ -277,11 +301,11 @@
             if (data.type && data.key) {
                 // Node to refresh, do it
                 if ($(this).hasClass('active')) return;
-                var link = $(this).addClass('active').prependDiamondLoader();
-                link.find('.glyphicon').hide();
+                var link = $(this).addClass('active');
+                link.find('.fa').addClass('fa-spin');
                 link.find('.js-text').text('Polling...');
                 Status.refresh.pause();
-                $.post('/poll', data)
+                $.post(Status.options.rootPath + 'poll', data)
                     .fail(function() {
                         toastr.error('There was an error polling this node.', 'Polling',
                         {
@@ -312,7 +336,7 @@
 
             if (type && key) {
                 $(this).text('').prependWaveLoader().addClass('disabled');
-                $.ajax('/poll', {
+                $.ajax(Status.options.rootPath + 'poll', {
                     data: {
                         type: type,
                         key: key,
@@ -328,29 +352,39 @@
                 });
             }
             return false;
-        }).on('click', '.js-poll-all', function (e) {
+        }).on('click', '.js-dropdown-actions', function (e) {
             e.preventDefault();
-            var $link = $(this);
-            if ($link.hasClass('disabled')) { return; }
-
-            bootbox.confirm('Are you sure you want to force poll all nodes?', function(result) {
-                if (result) {
-                    $link.text('').prependWaveLoader().addClass('disabled');
-                    $.post('/poll/all')
-                        .done(function() {
-                            window.location.reload(true);
-                        });
+            e.stopPropagation();
+            var jThis = $(this);
+            if (jThis.hasClass('open')) {
+                jThis.removeClass('open');
+                resumeRefresh();
+            } else {
+                $('.js-dropdown-actions.open').removeClass('open');
+                var ddSource = $('.js-haproxy-server-dropdown ul').clone();
+                jThis.append(ddSource);
+                var actions = jThis.data('actions');
+                if (actions) {
+                    jThis.find('a[data-action]').each(function(_, i) {
+                        $(i).toggleClass('disabled', actions.indexOf($(i).data('action')) === -1);
+                    });
                 }
-            });
+                jThis.addClass('open');
+                pauseRefresh();
+            }
+        }).on('click', '.js-dropdown-actions a', function (e) {
+            e.preventDefault();
         }).on({
             'click': function() {
                 $('.action-popup').remove();
+                $('.js-dropdown-actions.open').removeClass('open');
             },
             'show': function() {
-                resumeRefresh();
+                setRefreshInterval(1);
+                runRefresh();
             },
             'hide': function() {
-                pauseRefresh();
+                setRefreshInterval(10);
             }
         });
         prepTableSorter();
@@ -413,7 +447,7 @@ Status.Dashboard = (function () {
         
         Status.loaders.register({
             '#/dashboard/graph/': function (val) {
-                Status.popup('/dashboard/graph/' + val);
+                Status.popup('dashboard/graph/' + val);
             }
         });
 
@@ -467,7 +501,7 @@ Status.Dashboard.Server = (function () {
 
         Status.loaders.register({
             '#/dashboard/summary/': function (val) {
-                Status.popup('/dashboard/node/summary/' + val, { node: Status.Dashboard.Server.options.node });
+                Status.popup('dashboard/node/summary/' + val, { node: Status.Dashboard.Server.options.node });
             }
         });
 
@@ -531,13 +565,13 @@ Status.Elastic = (function () {
 
         Status.loaders.register({
             '#/elastic/node/': function (val) {
-                Status.popup('/elastic/node/modal/' + val, {
+                Status.popup('elastic/node/modal/' + val, {
                     cluster: Status.Elastic.options.cluster,
                     node: Status.Elastic.options.node
                 });
             },
             '#/elastic/cluster/': function (val) {
-                Status.popup('/elastic/cluster/modal/' + val, {
+                Status.popup('elastic/cluster/modal/' + val, {
                     cluster: Status.Elastic.options.cluster,
                     node: Status.Elastic.options.node
                 });
@@ -545,7 +579,7 @@ Status.Elastic = (function () {
             '#/elastic/index/': function (val) {
                 var parts = val.split('/');
                 var reqOptions = $.extend({}, options, { index: parts[0] });
-                Status.popup('/elastic/index/modal/' + parts[1], reqOptions);
+                Status.popup('elastic/index/modal/' + parts[1], reqOptions);
             }
         });
     }
@@ -646,7 +680,7 @@ Status.SQL = (function () {
             ag: pieces.length > 1 ? pieces[1] : null,
             node: pieces.length > 2 ? pieces[2] : null
         };
-        Status.popup('/sql/servers', $.extend({}, Status.Dashboard.options.refreshData, { detailOnly: true }));
+        Status.popup('sql/servers', $.extend({}, Status.Dashboard.options.refreshData, { detailOnly: true }));
     }
 
     function loadPlan(val) {
@@ -654,7 +688,7 @@ Status.SQL = (function () {
             handle = parts[0],
             offset = parts.length > 1 ? parts[1] : null;
         $('.plan-row[data-plan-handle="' + handle + '"]').addClass('info');
-        Status.popup('/sql/top/detail', {
+        Status.popup('sql/top/detail', {
             node: Status.SQL.options.node,
             handle: handle,
             offset: offset
@@ -729,28 +763,34 @@ Status.SQL = (function () {
             '#/cluster/': loadCluster,
             '#/plan/': loadPlan,
             '#/sql/summary/': function (val) {
-                Status.popup('/sql/instance/summary/' + val, { node: Status.SQL.options.node });
+                Status.popup('sql/instance/summary/' + val, { node: Status.SQL.options.node }, {
+                    modalClass: val === 'errors' ? 'modal-huge' : 'modal-lg'
+                });
             },
             '#/sql/top/filters': function () {
-                Status.popup('/sql/top/filters' + window.location.search, null, filterOptions);
+                Status.popup('sql/top/filters' + window.location.search, null, filterOptions);
             },
             '#/sql/active/filters': function () {
-                Status.popup('/sql/active/filters' + window.location.search, null, filterOptions);
+                Status.popup('sql/active/filters' + window.location.search, null, filterOptions);
             },
             '#/db/': function (val, firstLoad, prev) {
-                var obj = val.indexOf('tables/') > 0 || val.indexOf('views/') > 0
+                var obj = val.indexOf('tables/') > 0 || val.indexOf('views/') || val.indexOf('storedprocedures/') > 0
                           ? val.split('/').pop() : null;
                 function showColumns() {
-                    $('.js-database-table,.js-database-view').removeClass('info').next().hide();
-                    $('[data-table="' + obj + '"],[data-view="' + obj + '"]').addClass('info').next().show(200);
+                    $('.js-next-collapsible').removeClass('info').next().hide();
+                    var cell = $('[data-obj="' + obj + '"]').addClass('info').next().show(200).find('td');
+                    if (cell.length === 1) {
+                        cell.css('max-width', cell.closest('.js-database-modal-right').width());
+                    }
                 }
                 if (!firstLoad) {
-                    if ((/\/tables/.test(val) && /\/tables/.test(prev)) || (/\/views/.test(val) && /\/views/.test(prev))) {
+                    // TODO: Generalize this to not need the replace? Possibly a root load in the modal
+                    if ((/\/tables/.test(val) && /\/tables/.test(prev)) || (/\/views/.test(val) && /\/views/.test(prev)) || (/\/storedprocedures/.test(val) && /\/storedprocedures/.test(prev))) {
                         showColumns();
                         return;
                     }
                 }
-                Status.popup('/sql/db/' + val, { node: Status.SQL.options.node }, {
+                Status.popup('sql/db/' + val, { node: Status.SQL.options.node }, {
                     modalClass: 'modal-huge',
                     onLoad: function () {
                         showColumns();
@@ -781,7 +821,7 @@ Status.SQL = (function () {
         function agentAction(link, route, errMessage) {
             var origText = link.text();
             var $link = link.text('').prependWaveLoader();
-            $.ajax('/sql/' + route, {
+            $.ajax(Status.options.rootPath + 'sql/' + route, {
                 type: 'POST',
                 data: {
                     node: Status.SQL.options.node,
@@ -790,7 +830,7 @@ Status.SQL = (function () {
                 },
                 success: function (data, status, xhr) {
                     if (data === true) {
-                        Status.popup('/sql/instance/summary/jobs', { node: Status.SQL.options.node });
+                        Status.popup('sql/instance/summary/jobs', { node: Status.SQL.options.node });
                     } else {
                         $link.text(origText).errorPopupFromJSON(xhr, errMessage);
                     }
@@ -816,8 +856,8 @@ Status.SQL = (function () {
             return false;
         }).on('click', '.ag-node', function() {
             window.location.hash = $('.ag-node-name a', this)[0].hash;
-        }).on('click', '.js-database-table,.js-database-view', function () {
-            window.location.hash = window.location.hash.replace(/\/tables\/.*/, '/tables').replace(/\/views\/.*/, '/views');
+        }).on('click', '.js-next-collapsible', function () {
+            window.location.hash = window.location.hash.replace(/\/tables\/.*/, '/tables').replace(/\/views\/.*/, '/views').replace(/\/storedprocedures\/.*/, '/storedprocedures');
         });
     }
 
@@ -834,10 +874,10 @@ Status.Redis = (function () {
 
         Status.loaders.register({
             '#/redis/summary/': function(val) {
-                Status.popup('/redis/instance/summary/' + val, { node: Status.Redis.options.node + ':' + Status.Redis.options.port });
+                Status.popup('redis/instance/summary/' + val, { node: Status.Redis.options.node + ':' + Status.Redis.options.port });
             },
             '#/redis/actions/': function (val) {
-                Status.popup('/redis/instance/actions/' + val);
+                Status.popup('redis/instance/actions/' + val);
             }
         });
 
@@ -906,20 +946,38 @@ Status.Redis = (function () {
 Status.Exceptions = (function () {
 
     function refreshCounts(data) {
-        if (!data.apps && data.apps.length) return;
-        $('.badge-link-list li').each(function () {
-            var app = data.apps[$(this).data('name')];
-            $('.badge', this).text(app && app.ExceptionCount ? app.ExceptionCount.toLocaleString() : '');
+        if (!(data.Groups && data.Groups.length)) return;
+        var log = Status.Exceptions.options.log,
+            logCount = 0,
+            group = Status.Exceptions.options.group,
+            groupCount = 0;
+        // For any not found...
+        $('.js-exception-total').text('0');
+        data.Groups.forEach(function(g) {
+            if (g.Name === group) {
+                groupCount = g.Total;
+            }
+            $('.js-exception-total[data-name="' + g.Name + '"]').text(g.Total.toLocaleString());
+            g.Applications.forEach(function(app) {
+                if (app.Name === log) {
+                    logCount = app.Total;
+                }
+                $('.js-exception-total[data-name="' + g.Name + '-' + app.Name + '"]').text(app.Total.toLocaleString());
+            });
         });
         if (Status.Exceptions.options.search) return;
-        var log = Status.Exceptions.options.log;
-        if (log) {
-            var count = data.apps[log].ExceptionCount;
-            $('.js-exception-title').text(count.toLocaleString() + ' ' + log + ' Exception' + (count !== 1 ? 's' : ''));
-        } else {
-            $('.js-exception-title').text(total.toLocaleString() + ' Exception' + (data.total !== 1 ? 's' : ''));
+        function setTitle(name, count) {
+            $('.js-exception-title').html(count.toLocaleString() + ' ' + name + ' Exception' + (count !== 1 ? 's' : ''));
         }
-        $('.js-top-tabs .badge[data-name="Exceptions"]').text(data.total.toLocaleString());
+
+        if (log) {
+            setTitle(log, logCount);
+        } else if (group) {
+            setTitle(group, groupCount);
+        } else {
+            setTitle('', data.Total);
+        }
+        $('.js-top-tabs .badge[data-name="Exceptions"]').text(data.Total.toLocaleString());
     }
 
     function init(options) {
@@ -949,7 +1007,7 @@ Status.Exceptions = (function () {
                 loadingMore = true;
                 $('.js-bottom-loader').show();
                 var lastGuid = $('.js-exceptions tr.js-error').last().data('id');
-                $.ajax('/exceptions/load-more', {
+                $.ajax(Status.options.rootPath + 'exceptions/load-more', {
                     data: {
                         log: options.log,
                         sort: options.sort,
@@ -993,7 +1051,7 @@ Status.Exceptions = (function () {
                 url: url,
                 success: function (data) {
                     if (options.showingDeleted) {
-                        jThis.attr('title', 'Error is already deleted');
+                        jThis.attr('title', 'Error is already deleted').addClass('disabled');
                         jRow.addClass('deleted');
                         // TODO: Replace protected glyph here
                         //jCell.find('span.protected').replaceWith('<a title="Undelete and protect this error" class="protect-link" href="' + url.replace('/delete', '/protect') + '">&nbsp;P&nbsp;</a>');
@@ -1056,7 +1114,7 @@ Status.Exceptions = (function () {
                 success: function (data) {
                     $(this).siblings('.js-delete-link').attr('title', 'Delete this error')
                            .end()
-                           .replaceWith('<span class="js-protected glyphicon glyphicon-lock text-primary" title="This error is protected"></span>');
+                           .replaceWith('<span class="js-protected fa fa-lock fa-fw text-primary" title="This error is protected"></span>');
                     jRow.addClass('js-protected protected').removeClass('deleted');
                     refreshCounts(data);
                 },
@@ -1069,9 +1127,7 @@ Status.Exceptions = (function () {
                 }
             });
             return false;
-        });
-        
-        $('.js-content').on('click', '.js-exceptions tbody td', function (e) {
+        }).on('click', '.js-exceptions tbody td', function (e) {
             if ($(e.target).closest('a').length) {
                 return;
             }
@@ -1120,7 +1176,7 @@ Status.Exceptions = (function () {
                         context: this,
                         traditional: true,
                         data: { ids: ids, returnCounts: true },
-                        url: '/exceptions/delete-list',
+                        url: Status.options.rootPath + 'exceptions/delete-list',
                         success: function (data) {
                             var table = selected.closest('table');
                             selected.remove();
@@ -1146,10 +1202,11 @@ Status.Exceptions = (function () {
                 id = jThis.data('id') || options.id;
             bootbox.confirm('Really delete all non-protected errors' + (id ? ' like this one' : '') + '?', function(result) {
                 if (result) {
-                    jThis.find('.glyphicon').addClass('icon-rotate-flip');
+                    jThis.find('.fa').addClass('icon-rotate-flip');
                     $.ajax({
                         type: 'POST',
                         data: {
+                            group: jThis.data('group') || options.group,
                             log: jThis.data('log') || options.log,
                             id: jThis.data('id') || options.id
                         },
@@ -1158,7 +1215,7 @@ Status.Exceptions = (function () {
                             window.location.href = data.url;
                         },
                         error: function(xhr) {
-                            jThis.find('.glyphicon').removeClass('icon-rotate-flip');
+                            jThis.find('.fa').removeClass('icon-rotate-flip');
                             jThis.parent().errorPopupFromJSON(xhr, 'An error occurred clearing this log');
                         }
                     });
@@ -1169,22 +1226,22 @@ Status.Exceptions = (function () {
 
         $(document).on('click', 'a.js-clear-visible', function () {
             var jThis = $(this);
-            bootbox.confirm('Really delete all non-protected errors?', function (result) {
+            bootbox.confirm('Really delete all visible, non-protected errors?', function (result) {
                 if (result)
                 {
-                    var ids = $('.exceptions-dashboard tr.error:not(.protected,.deleted)').map(function () { return $(this).data('id'); }).get();
-                    jThis.find('.glyphicon').addClass('icon-rotate-flip');
+                    var ids = $('.js-error:not(.protected,.deleted)').map(function () { return $(this).data('id'); }).get();
+                    jThis.find('.fa').addClass('icon-rotate-flip');
 
                     $.ajax({
                         type: 'POST',
                         traditional: true,
-                        data: { log: options.log, ids: ids },
-                        url: '/exceptions/delete-list',
+                        data: { group: options.group, log: options.log, ids: ids },
+                        url: jThis.data('url'),
                         success: function (data) {
                             window.location.href = data.url;
                         },
                         error: function (xhr) {
-                            jThis.find('.glyphicon').removeClass('icon-rotate-flip');
+                            jThis.find('.fa').removeClass('icon-rotate-flip');
                             jThis.parent().errorPopupFromJSON(xhr, 'An error occurred clearing visible exceptions');
                         }
                     });
@@ -1209,23 +1266,23 @@ Status.Exceptions = (function () {
             var previewTimer = 0;
             $('.js-content').on({
                 mouseenter: function (e) {
-                    if ($(e.target).closest('td:first-child').length) {
-                        return;
+                    if ($(e.target).closest('.js-error td:nth-child(4)').length) {
+                        var jThis = $(this).find('.js-exception-link'),
+                            url = jThis.attr('href').replace('/detail', '/preview');
+
+                        clearTimeout(previewTimer);
+                        previewTimer = setTimeout(function() {
+                                $.get(url,
+                                    function(resp) {
+                                        var sane = $(resp).filter('.error-preview');
+                                        if (!sane.length) return;
+
+                                        $('.error-preview-popup').fadeOut(125, function() { $(this).remove(); });
+                                        var errDiv = $('<div class="error-preview-popup" />').append(resp);
+                                        errDiv.appendTo(jThis.parent()).fadeIn('fast');
+                                    });
+                            }, 600);
                     }
-                    var jThis = $(this).find('.js-exception-link'),
-                        url = jThis.attr('href').replace('/detail', '/preview');
-
-                    clearTimeout(previewTimer);
-                    previewTimer = setTimeout(function () {
-                        $.get(url, function (resp) {
-                            var sane = $(resp).filter('.error-preview');
-                            if (!sane.length) return;
-
-                            $('.error-preview-popup').fadeOut(125, function () { $(this).remove(); });
-                            var errDiv = $('<div class="error-preview-popup" />').append(resp);
-                            errDiv.appendTo(jThis.parent()).fadeIn('fast');
-                        });
-                    }, 600);
                 },
                 mouseleave: function () {
                     clearTimeout(previewTimer);
@@ -1241,7 +1298,7 @@ Status.Exceptions = (function () {
                 type: 'POST',
                 data: { id: options.id, log: options.log, redirect: true },
                 context: this,
-                url: '/exceptions/delete',
+                url: Status.options.rootPath + 'exceptions/delete',
                 success: function (data) {
                     window.location.href = data.url;
                 },
@@ -1260,11 +1317,11 @@ Status.Exceptions = (function () {
                 type: 'POST',
                 data: { id: options.id, log: options.log, actionid: actionid },
                 context: this,
-                url: '/exceptions/jiraaction',
+                url: Status.options.rootPath + 'exceptions/jiraaction',
                 success: function (data) {
                     $(this).removeClass('loading');
                     if (data.success) {
-                        if (data.browseUrl != null && data.browseUrl !== "") {
+                        if (data.browseUrl && data.browseUrl !== "") {
 
                             var issueLink = '<a href="' + data.browseUrl + '" target="_blank">' + data.issueKey + '</a>';
                             $("#jira-links-container").show();
@@ -1305,7 +1362,7 @@ Status.HAProxy = (function () {
         }
 
         // Admin Panel (security is server-side)
-        $('.js-content').on('click', '.js-haproxy-action', function (e) {
+        $('.js-content').on('click', '.js-haproxy-action, .js-haproxy-actions a', function (e) {
             var jThis = $(this),
                 data = {
                     group: jThis.closest('[data-group]').data('group'),
@@ -1315,16 +1372,18 @@ Status.HAProxy = (function () {
                 };
 
             function haproxyAction() {
-                jThis.addClass('icon-rotate-flip');
+                jThis.find('.fa').addBack('.fa').addClass('icon-rotate-flip');
+                var cog = jThis.closest('.js-dropdown-actions').find('.hover-spin > .fa').addClass('spin');
                 $.ajax({
                     type: 'POST',
                     data: data,
-                    url: '/haproxy/admin/action',
+                    url: Status.options.rootPath + 'haproxy/admin/action',
                     success: function () {
                         Status.refresh.run();
                     },
                     error: function () {
                         jThis.removeClass('icon-rotate-flip').parent().errorPopup('An error occured while trying to ' + data.act + '.');
+                        cog.removeClass('spin');
                     }
                 });
             }
@@ -1408,22 +1467,15 @@ Status.HAProxy = (function () {
         tooltipTimeFormat: d3.time.format.utc('%A, %b %d %H:%M')
     };
 
-    var waveHtml = '<div class="sk-wave loader"><div></div><div></div><div></div><div></div><div></div></div>',
-        diamondHtml = '<div class="sk-folding-cube loader"><div></div><div></div><div></div><div></div></div>';
+    var waveHtml = '<div class="sk-wave loader"><div></div><div></div><div></div><div></div><div></div></div>';
 
     // Creating jQuery plguins...
     $.fn.extend({
         findWithSelf: function (selector) {
             return this.find(selector).andSelf().filter(selector);
         },
-        appendDiamondLoader: function () {
-            return this.append(diamondHtml);
-        },
         appendWaveLoader: function () {
             return this.append(waveHtml);
-        },
-        prependDiamondLoader: function () {
-            return this.prepend(diamondHtml);
         },
         prependWaveLoader: function () {
             return this.prepend(waveHtml);
@@ -1573,6 +1625,7 @@ Status.HAProxy = (function () {
                 dateRanges: true,
                 interpolation: 'linear',
                 leftMargin: 40,
+                live: false,
                 id: this.data('id'),
                 title: this.data('title'),
                 subtitle: this.data('subtitle'),
@@ -1607,7 +1660,7 @@ Status.HAProxy = (function () {
                 svg, focus, context, clip,
                 currentArea,
                 refreshTimer,
-                urlPath = '/graph/' + options.type + (options.subtype ? '/' + options.subtype : '') + '/json',
+                urlPath = Status.options.rootPath + 'graph/' + options.type + (options.subtype ? '/' + options.subtype : '') + '/json',
                 params = { summary: true },
                 stack, stackArea, stackSummaryArea, stackFunc; // stacked specific vars
             
@@ -1631,20 +1684,27 @@ Status.HAProxy = (function () {
                 if (options.width - 10 - options.leftMargin < 300)
                     options.width = 300 + 10 + options.leftMargin;
                 
-                margin = { top: 10, right: options.rightMargin || 10, bottom: 100, left: options.leftMargin };
-                margin2 = { top: options.height - 77, right: 10, bottom: 20, left: options.leftMargin };
+                margin = { top: 10, right: options.rightMargin || 10, bottom: options.live ? 25 : 100, left: options.leftMargin };
                 width = options.width - margin.left - margin.right;
                 height = options.height - margin.top - margin.bottom;
-                height2 = options.height - margin2.top - margin2.bottom;
+
+                var timeFormats = d3.time.format.utc.multi([
+                    ['.%L', function (d) { return d.getUTCMilliseconds(); }],
+                    [':%S', function (d) { return d.getUTCSeconds(); }],
+                    ['%H:%M', function (d) { return d.getUTCMinutes(); }],
+                    ['%H:%M', function (d) { return d.getUTCHours(); }],
+                    ['%a %d', function (d) { return d.getUTCDay() && d.getUTCDate() !== 1; }],
+                    ['%b %d', function (d) { return d.getUTCDate() !== 1; }],
+                    ['%B', function (d) { return d.getUTCMonth(); }],
+                    ['%Y', function () { return true; }]
+                ]);
 
                 x = d3.time.scale.utc().range([0, width]);
-                x2 = d3.time.scale.utc().range([0, width]);
                 y = d3.scale.linear().range([height, 0]);
                 yr = d3.scale.linear().range([height, 0]);
-                y2 = d3.scale.linear().range([height2, 0]);
 
-                xAxis = d3.svg.axis().scale(x).orient('bottom');
-                xAxis2 = d3.svg.axis().scale(x2).orient('bottom');
+
+                xAxis = d3.svg.axis().scale(x).orient('bottom').tickFormat(timeFormats);
                 yAxis = d3.svg.axis().scale(y).orient('left');
                 yrAxis = d3.svg.axis().scale(yr).orient('right');
                 
@@ -1664,9 +1724,6 @@ Status.HAProxy = (function () {
                     .x(x)
                     .on('brushend', redrawFromMain);
 
-                brush2 = d3.svg.brush()
-                    .x(x2)
-                    .on('brush', redrawFromSummary);
                 
                 svg = d3.select(chart[0]).append('svg')
                     .attr('width', options.width)
@@ -1679,7 +1736,21 @@ Status.HAProxy = (function () {
                     .attr('height', height);
 
                 focus = svg.append('g').attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
-                context = svg.append('g').attr('transform', 'translate(' + margin2.left + ',' + margin2.top + ')');
+
+
+                if (!options.live) { // Summary elements
+                    margin2 = { top: options.height - 77, right: 10, bottom: 20, left: options.leftMargin };
+                    height2 = options.height - margin2.top - margin2.bottom;
+                    x2 = d3.time.scale.utc().range([0, width]);
+                    y2 = d3.scale.linear().range([height2, 0]);
+                    xAxis2 = d3.svg.axis().scale(x2).orient('bottom').tickFormat(timeFormats);
+
+                    brush2 = d3.svg.brush()
+                        .x(x2)
+                        .on('brush', redrawFromSummary);
+
+                    context = svg.append('g').attr('transform', 'translate(' + margin2.left + ',' + margin2.top + ')');
+                }
             }
             
             function getClass(prefix, s) {
@@ -1707,8 +1778,11 @@ Status.HAProxy = (function () {
             
             function drawPrimaryGraphs(data) {
                 x.domain(options.ajaxZoom ? d3.extent(data.points.map(function (d) { return d.date; })) : [minDate, maxDate]);
-                x2.domain(d3.extent(data.summary.map(function (d) { return d.date; })));
-                y2.domain(getExtremes(data.summary, series, options.min, options.max));
+
+                if (!options.live) { // Summary
+                    x2.domain(d3.extent(data.summary.map(function(d) { return d.date; })));
+                    y2.domain(getExtremes(data.summary, series, options.min, options.max));
+                }
 
                 rescaleYAxis(data, true);
                 
@@ -1719,10 +1793,12 @@ Status.HAProxy = (function () {
                         .x(function(d) { return x(d.date); })
                         .y0(function(d) { return y(d.y0); })
                         .y1(function (d) { return y(d.y0 + d.y); });
-                    stackSummaryArea = d3.svg.area()
-                        .x(function(d) { return x2(d.date); })
-                        .y0(function(d) { return y2(d.y0); })
-                        .y1(function (d) { return y2(d.y0 + d.y); });
+                    if (!options.live) { // Summary
+                        stackSummaryArea = d3.svg.area()
+                            .x(function(d) { return x2(d.date); })
+                            .y0(function(d) { return y2(d.y0); })
+                            .y1(function(d) { return y2(d.y0 + d.y); });
+                    }
                     stackFunc = function(dataList) {
                         return stack(series.map(function(s) {
                             var result = { name: s.name, values: dataList.map(function (d) { return { date: d.date, y: d[s.name] }; }) };
@@ -1757,12 +1833,14 @@ Status.HAProxy = (function () {
                             .attr('fill', options.colorStops ? 'url(#' + gradientId + ')' : getColor())
                             .attr('clip-path', 'url(#' + clipId + ')')
                             .attr('d', s.area.y0(y(0)));
-                        // and the summary
-                        context.append('path')
-                            .datum(data.summary)
-                            .attr('class', getClass('summary-area', s))
-                            .attr('fill', getColor())
-                            .attr('d', s.summaryArea.y0(y2(0)));
+                        if (!options.live) {
+                            // and the summary
+                            context.append('path')
+                                .datum(data.summary)
+                                .attr('class', getClass('summary-area', s))
+                                .attr('fill', getColor())
+                                .attr('d', s.summaryArea.y0(y2(0)));
+                        }
                     });
                 }
 
@@ -1848,18 +1926,21 @@ Status.HAProxy = (function () {
                     .attr('y', 0)
                     .attr('height', height + 1);
 
-                context.append('g')
-                    .attr('class', 'x axis')
-                    .attr('transform', 'translate(0,' + height2 + ')')
-                    .call(xAxis2);
+                if (!options.live) {
+                    context.append('g')
+                        .attr('class', 'x axis')
+                        .attr('transform', 'translate(0,' + height2 + ')')
+                        .call(xAxis2);
 
-                // bottom selection brush, for summary
-                bottomBrushArea = context.append('g')
-                    .attr('class', 'x brush')
-                    .call(brush2);
-                bottomBrushArea.selectAll('rect')
-                    .attr('y', -6)
-                    .attr('height', height2 + 7);
+                    // bottom selection brush, for summary
+                    bottomBrushArea = context.append('g')
+                        .attr('class', 'x brush')
+                        .call(brush2);
+                    bottomBrushArea.selectAll('rect')
+                        .attr('y', -6)
+                        .attr('height', height2 + 7);
+                }
+
 
                 curWidth = chart.width();
                 curHeight = chart.height();
@@ -2041,14 +2122,16 @@ Status.HAProxy = (function () {
                 dataLoaded = true;
                 chart.find('.loader').hide();
 
-                // set the initial summary brush to reflect what was loaded up top
-                brush2.extent(x.domain())(bottomBrushArea);
+                if (!options.live) {
+                    // set the initial summary brush to reflect what was loaded up top
+                    brush2.extent(x.domain())(bottomBrushArea);
+                }
 
                 if (options.showBuilds && !data.builds) {
-                    $.getJSON('/graph/builds/json', params, function (bData) {
-                        postProcess(bData);
-                        drawBuilds(bData);
-                    });
+                    //$.getJSON(Status.options.rootPath + 'graph/builds/json', params, function (bData) {
+                    //    postProcess(bData);
+                    //    drawBuilds(bData);
+                    //});
                 }
             }
 

@@ -20,12 +20,12 @@
 Sync: @(db.SynchronizationState.HasValue ? db.SynchronizationState.Value.GetDescription() : "Unknown")
 Health: @(db.SynchronizationHealth.HasValue ? db.SynchronizationHealth.Value.GetDescription() : "Unknown")
 @if (db.SuspendReason.HasValue) {<text>
-Suspension Reason: @db.SuspendReason.GetDescription()</text>}">@db.IconSpan() @db.MonitorStatus.Span(db.DatabaseName)</div>
+Suspension Reason: @db.SuspendReason.Value.GetDescription()</text>}">@db.IconSpan() @db.MonitorStatus.Span(db.DatabaseName)</div>
             }
         }
         else
         {
-            <div class="text-danger">Sync: @r.SynchronizationHealth.GetDescription()</div>
+            <div class="text-danger">Sync: @(r.SynchronizationHealth.HasValue ? r.SynchronizationHealth.Value.GetDescription() : "Unknwon")</div>
         }
     }
 }
@@ -38,7 +38,7 @@ Suspension Reason: @db.SuspendReason.GetDescription()</text>}">@db.IconSpan() @d
         <div class="panel-body small list-group">
             <div class="well well-sm well-condensed">
                 <div class="pull-right">
-                    <span class="glyphicon glyphicon-tasks @(ag.LocalReplica.Databases.GetWorstStatus().TextClass(showGood: true))"></span> @SQLHelpers.HealthDescriptionAGs(ag.LocalReplica.ReplicaNode, ag.LocalReplica.Databases, minimal: true)
+                    <i class="fa fa-database @(ag.LocalReplica.Databases.GetWorstStatus().TextClass(showGood: true))" aria-hidden="true"></i>  @SQLHelpers.HealthDescriptionAGs(ag.LocalReplica.Databases, minimal: true)
                 </div>
                 <div>
                     @ag.LocalReplica.IconSpan() <a href="#/cluster/@ag.ClusterName.UrlEncode()/@ag.Name.UrlEncode()/@ag.Node.Name.UrlEncode()">@ag.Node.Name</a> <span class="text-success">(Master)</span>
@@ -46,8 +46,8 @@ Suspension Reason: @db.SuspendReason.GetDescription()</text>}">@db.IconSpan() @d
 
                 @RenderDBIssues(ag.LocalReplica)
                 <div>
-                    <span class="glyphicon glyphicon-upload"></span> @(((long)ag.RemoteReplicas.Sum(r => r.BytesSentPerSecond)).ToSize(zero: "0"))ps
-                    <span class="glyphicon glyphicon-download"></span> @(((long)ag.RemoteReplicas.Sum(r => r.BytesReceivedPerSecond)).ToSize(zero: "0"))ps
+                    @Icon.Upload @(((long)ag.RemoteReplicas.Sum(r => r.BytesSentPerSecond)).ToSize(zero: "0"))ps
+                    @Icon.Download @(((long)ag.RemoteReplicas.Sum(r => r.BytesReceivedPerSecond)).ToSize(zero: "0"))ps
                 </div>
                 <div>
                     <span class="pull-right">@ag.Node.LastFetch.ToPollSpan(mini: true, lastSuccess: true)</span>
@@ -76,7 +76,7 @@ Suspension Reason: @db.SuspendReason.GetDescription()</text>}">@db.IconSpan() @d
     Connection State: @r.ConnectedState
     Mode: @r.AvailabilityMode">
                         <div class="pull-right">
-                            <span class="glyphicon glyphicon-tasks @(r.Databases.GetWorstStatus().TextClass())"></span> @SQLHelpers.HealthDescriptionAGs(r.ReplicaNode, r.Databases, minimal: true)
+                            <i class="fa fa-database @(r.Databases.GetWorstStatus().TextClass(showGood: true))" aria-hidden="true"></i> @SQLHelpers.HealthDescriptionAGs(r.Databases, minimal: true)
                         </div>
                         <div>
                             <span>
@@ -94,8 +94,8 @@ Suspension Reason: @db.SuspendReason.GetDescription()</text>}">@db.IconSpan() @d
                         </div>
                         @RenderDBIssues(r)
                         <div>
-                            <span class="glyphicon glyphicon-upload"></span> @(((long)r.BytesReceivedPerSecond).ToSize(zero: "0 B"))ps
-                            <span class="glyphicon glyphicon-download"></span> @(((long)r.BytesSentPerSecond).ToSize(zero: "0 B"))ps
+                            @Icon.Upload @(((long)r.BytesReceivedPerSecond).ToSize(zero: "0 B"))ps
+                            @Icon.Download @(((long)r.BytesSentPerSecond).ToSize(zero: "0 B"))ps
                         </div>
                         <div>
                             <span class="pull-right">@ag.Node.AvailabilityGroups.ToPollSpan(mini: true, lastSuccess: true)</span>

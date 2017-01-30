@@ -1,4 +1,5 @@
-﻿@using StackExchange.Opserver.Data.Dashboard
+﻿@using StackExchange.Opserver.Controllers
+@using StackExchange.Opserver.Data.Dashboard
 @using StackExchange.Opserver.Models
 @using StackExchange.Opserver.Views.Dashboard
 @model NodeModel
@@ -6,7 +7,7 @@
     var s = Model.CurrentNode;
 
     this.SetPageTitle((s?.PrettyName ?? "Unknown Node") + " Status");
-    this.SetTopNodes(DashboardData.AllNodes, "Dashboard", Model.CurrentNode);
+    this.SetTopNodes(DashboardModule.AllNodes, "Dashboard", Model.CurrentNode);
 }
 @section head {
     <script>
@@ -26,7 +27,7 @@
     @s.PrettyName
     @if (s.IsVM)
     {
-        @:(Virtual - <a href="/dashboard/node?node=@s.VMHost.PrettyName&view=@CurrentStatusTypes.VMHost" class="node-name-link">@s.VMHost.PrettyName</a>)
+        <span class="text-muted">(Virtual Machine)</span>
     }
     @if (s.ManagementUrl.HasValue())
     {
@@ -48,8 +49,16 @@
             </div>
             <div class="panel-body">
                 <div class="value-block small col-xs-6">
-                    @s.Manufacturer
-                    <label>Manufacturer</label>
+                    @if (s.Manufacturer.IsNullOrEmpty() && s.IsVM)
+                    {
+                        <a href="@Url.Action(nameof(DashboardController.Node), new {node = s.VMHost.PrettyName, view = CurrentStatusTypes.VMHost})">@s.VMHost.PrettyName</a>
+                        <label>VM Host</label>
+                    }
+                    else
+                    {
+                        @s.Manufacturer
+                        <label>Manufacturer</label>
+                    }
                 </div>
                 <div class="value-block small col-xs-6">
                     @s.Model
@@ -59,7 +68,7 @@
                     @(s.ServiceTag ?? "Unknown")
                     <label>Serial</label>
                 </div>
-                <div class="value-block small col-xs-6">
+                <div class="value-block small col-xs-6" title="@s.MachineType">
                     @s.MachineTypePretty
                     <label>Type</label>
                 </div>
@@ -68,18 +77,24 @@
     </div>
     <div class="col-md-4 col-sm-6">
         <div class="panel panel-default">
-            <div class="panel-heading">Stats</div>
+            <div class="panel-heading">
+                Stats
+                @if (s.IsRealTimePollable)
+                {
+                    //<span class="text-muted">(<a href="#/dashboard/graph/@s.Id.UrlEncode()/@NodeGraphModel.KnownTypes.Live" class="js-realtime-cpu">live</a>)</span>
+                }
+            </div>
             <div class="panel-body">
                 <div class="value-block small col-xs-6" title="@s.ApplicationCPUTextSummary()">
                     <div class="progress">
-                        <div class="progress-bar" style="width: @s.CPULoad.ToString()%;"></div>
+                        <div class="progress-bar" style="width: @(s.CPULoad?.ToString(CultureInfo.InvariantCulture))%;"></div>
                         <span>@s.CPUStatusSpan()</span>
                     </div>
                     <label>CPU</label>
                 </div>
                 <div class="value-block small col-xs-6" title="@s.ApplicationMemoryTextSummary()">
                     <div class="progress">
-                        <div class="progress-bar @s.MemoryMonitorStatus().ProgressBarClass()" style="width: @s.PercentMemoryUsed.ToString()%;"></div>
+                        <div class="progress-bar @s.MemoryMonitorStatus().ProgressBarClass()" style="width: @(s.PercentMemoryUsed?.ToString(CultureInfo.InvariantCulture))%;"></div>
                         <span>@s.PrettyMemoryUsed() / @s.PrettyTotalMemory()</span>
                     </div>
                     <label>Memory</label>
@@ -120,7 +135,7 @@
                     {
                         <div class="value-block small col-xs-12" title="@v.Description: @(v.Used?.ToString("n0")) of @(v.Size?.ToString("n0")) bytes used">
                             <div class="progress">
-                                <div class="progress-bar @(v.SpaceStatus.ProgressBarClass())" style="width: @(v.PercentUsed.ToString())%;"></div>
+                                <div class="progress-bar @(v.SpaceStatus.ProgressBarClass())" style="width: @(v.PercentUsed?.ToString(CultureInfo.InvariantCulture))%;"></div>
                                 <span>@v.PrettyDescription - (@v.PrettyUsed / @v.PrettySize) - <span class="@v.SpaceStatus.TextClass()">@v.PercentFreeSpace()</span></span>
                             </div>
                         </div>
@@ -139,28 +154,29 @@
     <ul class="nav nav-tabs nav-tabs-right">
         @foreach (var st in Model.StatusTypes.OrderBy(i => i))
         {
+            // TODO: Re-vamp this whole section
             switch (st)
             {
                 case CurrentStatusTypes.SQLInstance:
-                    @SubnavItem(st, "/sql/instance?node=" + s.PrettyName)
+                    @SubnavItem(st, Url.Action(nameof(SQLController.Instance), "SQL", new { node = s.PrettyName }))
                     break;
                 case CurrentStatusTypes.SQLActive:
-                    @SubnavItem(st, "/sql/active?node=" + s.PrettyName)
+                    @SubnavItem(st, Url.Action(nameof(SQLController.Active), "SQL", new { node = s.PrettyName }))
                     break;
                 case CurrentStatusTypes.SQLTop:
-                    @SubnavItem(st, "/sql/top?node=" + s.PrettyName)
+                    @SubnavItem(st, Url.Action(nameof(SQLController.Top), "SQL", new { node = s.PrettyName }))
                     break;
-                case CurrentStatusTypes.Redis:
-                    @SubnavItem(st, "/redis?node=" + s.PrettyName)
-                    break;
+                //case CurrentStatusTypes.Redis:
+                //@SubnavItem(st, "/redis?node=" + s.PrettyName)
+                //break;
                 case CurrentStatusTypes.HAProxy:
-                    @SubnavItem(st, "/haproxy")
+                    @SubnavItem(st, Url.Action(nameof(HAProxyController.Dashboard), "HAProxy", new { node = s.PrettyName }))
                     break;
-                case CurrentStatusTypes.Elastic:
-                    @SubnavItem(st, "/elastic" + s.PrettyName)
-                    break;
+                //case CurrentStatusTypes.Elastic:
+                //@SubnavItem(st, "/elastic" + s.PrettyName)
+                //break;
                 default:
-                    @SubnavItem(st, $"/dashboard/node?node={s.PrettyName}&view={st}")
+                    @SubnavItem(st, Url.Action(nameof(DashboardController.Node), new { node = s.PrettyName, view = st }))
                     break;
             }
         }

@@ -45,7 +45,7 @@ namespace StackExchange.Opserver
                         // TODO: Decide on how collections (and subcollections) are handled
                         // need to broadcast these changes or publish them via json APIs
                     }
-                    else if(prop.CanWrite)
+                    else if (prop.CanWrite)
                     {
                         try
                         {
@@ -72,7 +72,7 @@ namespace StackExchange.Opserver
         }
     }
 
-    public abstract class Settings : INotifyPropertyChanged, ISecurableSection
+    public abstract class Settings : INotifyPropertyChanged, ISecurableModule
     {
         /// <summary>
         /// Whether this section is enabled (has servers, has connection, etc.)

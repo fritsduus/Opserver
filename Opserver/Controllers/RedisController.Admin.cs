@@ -19,24 +19,25 @@ namespace StackExchange.Opserver.Controllers
         [Route("redis/instance/actions/{node}"), OnlyAllow(Roles.RedisAdmin)]
         public ActionResult InstanceActions(string node)
         {
-            var i = RedisInstance.GetInstance(node);
+            var i = RedisInstance.Get(node);
             if (i == null) return JsonNotFound();
 
             return View("Instance.Actions", i);
         }
 
         [Route("redis/instance/actions/{node}/make-master"), HttpPost, OnlyAllow(Roles.RedisAdmin)]
-        public ActionResult PromoteToMaster(string node)
+        public async Task<ActionResult> PromoteToMaster(string node)
         {
-            var i = RedisInstance.GetInstance(node);
+            var i = RedisInstance.Get(node);
             if (i == null) return JsonNotFound();
 
             var oldMaster = i.Master;
             try
             {
                 var message = i.PromoteToMaster();
-                i.PollAsync(true);
-                oldMaster?.PollAsync(true);
+                // We want these to be synchronous
+                await i.PollAsync(true);
+                await oldMaster?.PollAsync(true);
                 return Json(new { message });
             }
             catch (Exception ex)
@@ -48,7 +49,7 @@ namespace StackExchange.Opserver.Controllers
         [Route("redis/instance/actions/{node}/key-purge"), HttpPost, OnlyAllow(Roles.RedisAdmin)]
         public async Task<ActionResult> KeyPurge(string node, int db, string key)
         {
-            var i = RedisInstance.GetInstance(node);
+            var i = RedisInstance.Get(node);
             if (i == null) return JsonNotFound();
             
             try
@@ -82,13 +83,16 @@ namespace StackExchange.Opserver.Controllers
 
         private async Task<ActionResult> PerformInstanceAction(string node, Func<RedisInstance, Task<bool>> action, bool poll = false)
         {
-            var i = RedisInstance.GetInstance(node);
+            var i = RedisInstance.Get(node);
             if (i == null) return JsonNotFound();
 
             try
             {
                 var success = await action(i);
-                if (poll) i.PollAsync(true);
+                if (poll)
+                {
+                    await i.PollAsync(true);
+                }
                 return Json(new { success });
             }
             catch (Exception ex)

@@ -2,6 +2,7 @@
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using System.Web;
 using System.Web.Mvc;
 using StackExchange.Opserver.Data.SQL;
@@ -14,14 +15,17 @@ namespace StackExchange.Opserver.Controllers
     [OnlyAllow(Roles.SQL)]
     public partial class SQLController : StatusController
     {
-        protected override ISecurableSection SettingsSection => Current.Settings.SQL;
+        public override ISecurableModule SettingsModule => Current.Settings.SQL;
 
-        protected override string TopTab => TopTabs.BuiltIn.SQL;
+        public override TopTab TopTab => new TopTab("SQL", nameof(Servers), this, 10)
+        {
+            GetMonitorStatus = () => SQLModule.AllInstances.GetWorstStatus()
+        };
 
         [Route("sql")]
         public ActionResult Dashboard()
         {
-            return Redirect("/sql/servers");
+            return RedirectToAction(nameof(Servers));
         }
 
         [Route("sql/servers")]
@@ -29,8 +33,8 @@ namespace StackExchange.Opserver.Controllers
         {
             var vd = new ServersModel
                 {
-                    StandaloneInstances = SQLInstance.AllStandalone,
-                    Clusters = SQLCluster.AllClusters,
+                    StandaloneInstances = SQLModule.StandaloneInstances,
+                    Clusters = SQLModule.Clusters,
                     Refresh = node.HasValue() ? 10 : 5
                 };
 
@@ -94,7 +98,7 @@ namespace StackExchange.Opserver.Controllers
             if (i != null)
             {
                 var cache = i.GetTopOperations(options);
-                vd.TopOperations = cache.SafeData(true);
+                vd.TopOperations = cache.Data;
                 vd.ErrorMessage = cache.ErrorMessage;
             }
 
@@ -141,10 +145,10 @@ namespace StackExchange.Opserver.Controllers
         {
             var planHandle = HttpServerUtility.UrlTokenDecode(handle);
             var i = SQLInstance.Get(node);
-            var op = i.GetTopOperation(planHandle);
-            if (op.Data == null) return ContentNotFound("Plan was not found.");
+            var op = i.GetTopOperation(planHandle).Data;
+            if (op == null) return ContentNotFound("Plan was not found.");
 
-            var ms = new MemoryStream(Encoding.UTF8.GetBytes(op.Data.QueryPlan));
+            var ms = new MemoryStream(Encoding.UTF8.GetBytes(op.QueryPlan));
 
             return File(ms, "text/xml", $"QueryPlan-{Math.Abs(handle.GetHashCode()).ToString()}.sqlplan");
         }
@@ -175,14 +179,16 @@ namespace StackExchange.Opserver.Controllers
         }
 
         [Route("sql/connections")]
-        public ActionResult Connections(string node)
+        public async Task<ActionResult> Connections(string node)
         {
             var i = SQLInstance.Get(node);
 
             var vd = new DashboardModel
             {
                 View = SQLViews.Connections,
-                CurrentInstance = i
+                CurrentInstance = i,
+                Cache = i == null ? null : i.Connections,
+                Connections = i == null ? null : await i.Connections.GetData()
             };
             return View(vd);
         }
@@ -218,6 +224,9 @@ namespace StackExchange.Opserver.Controllers
                 case "backups":
                     vd.View = DatabasesModel.Views.Backups;
                     return View("Databases.Modal.Backups", vd);
+                case "restores":
+                    vd.View = DatabasesModel.Views.Restores;
+                    return View("Databases.Modal.Restores", vd);
                 case "storage":
                     vd.View = DatabasesModel.Views.Storage;
                     return View("Databases.Modal.Storage", vd);
@@ -227,6 +236,12 @@ namespace StackExchange.Opserver.Controllers
                 case "views":
                     vd.View = DatabasesModel.Views.Views;
                     return View("Databases.Modal.Views", vd);
+                case "missingindexes":
+                    vd.View = DatabasesModel.Views.MissingIndexes;
+                    return View("Databases.Modal.MissingIndexes", vd);
+                case "storedprocedures":
+                    vd.View = DatabasesModel.Views.StoredProcedures;
+                    return View("Databases.Modal.StoredProcedures", vd);
             }
             return View("Databases.Modal.Tables", vd);
         }
